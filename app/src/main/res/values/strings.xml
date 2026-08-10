@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">MAAFW火影忍者手游</string>
+    <string name="status_idle">待机中</string>
+    <string name="status_running">运行中</string>
+    <string name="status_shizuku_unbound">Shizuku 未连接</string>
+    <string name="status_shizuku_bound">Shizuku 已连接</string>
+    <string name="btn_start">启动任务</string>
+    <string name="btn_stop">停止任务</string>
+    <string name="btn_shizuku">检查 Shizuku</string>
+    <string name="hint_select_task">选择任务</string>
+    <string name="log_placeholder">等待运行日志…</string>
+    <string name="channel_engine">MAAFW 引擎服务</string>
+    <string name="channel_engine_desc">显示脚本运行状态与前台保活通知</string>
+</resources>
