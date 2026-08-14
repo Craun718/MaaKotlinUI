@@ -5,6 +5,10 @@ app/src/main/assets/
 /app/build/
 /build/
 app/src/main/native/obj/
+/cache/
 
 # JNI shared libraries (build artifacts)
 app/src/main/jniLibs/**/*.so
+
+# python
+*.pyc

@@ -1,42 +1,33 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-把 pipeline 里所有 "action": "MultiSwipe" 节点转换为 Custom action 喵～
+把 pipeline 里的 MultiSwipe 独立转换为 Android 兼容的 Custom action。
+
 转换后：
-  "action": "Custom",
-  "custom_action": "MultiSwipeCustom",
-  "custom_action_param": {"swipes": [...]}
-MaaFramework 的 AndroidNative controller 官方只支持单点触摸（"native android controller only
-supports single touch"），MultiSwipe 多指会被拒绝；改为 Custom action 后由引擎进程
-用 injectInputEvent 注入多指针 MotionEvent，绕过该限制喵。
+    "action": "Custom",
+    "custom_action": "MultiSwipeCustom",
+    "custom_action_param": {"swipes": [...]}
+
+用法：
+    python3 scripts/convert_multiswipe.py app/src/main/assets/resource/base/pipeline
 """
+
+import argparse
 import json
-import os
-import re
-import sys
+from pathlib import Path
 
-PIPELINE_DIR = "/storage/emulated/0/火影MAA安卓脚本开发/MAAFW-Android-火影忍者手游/app/src/main/assets/resource/base/pipeline"
 
-# 去掉 JSON 中的 // 行注释（MaaFramework 的 pipeline 允许 jsonc 风格注释）
 def strip_jsonc(text: str) -> str:
-    lines = text.splitlines()
-    out = []
-    for line in lines:
-        stripped = line.lstrip()
-        if stripped.startswith("//"):
-            continue
-        # 行内注释：不处理（避免破坏字符串），pipeline 里注释基本是整行
-        out.append(line)
-    return "\n".join(out)
+    return "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("//")
+    )
 
 
-def convert_file(path: str) -> int:
-    with open(path, "r", encoding="utf-8") as f:
-        raw = f.read()
+def convert_file(path: Path) -> int:
     try:
+        raw = path.read_text(encoding="utf-8")
         data = json.loads(strip_jsonc(raw))
     except Exception as e:
-        print(f"  [SKIP] {os.path.basename(path)} 解析失败: {e}")
+        print(f"  [SKIP] {path.name} 解析失败: {e}")
         return 0
 
     if not isinstance(data, dict):
@@ -46,37 +37,57 @@ def convert_file(path: str) -> int:
     for node_name, node in data.items():
         if not isinstance(node, dict):
             continue
-        if node.get("action") == "MultiSwipe":
-            swipes = node.get("swipes")
-            if not isinstance(swipes, list):
-                continue
-            # 保留原 MultiSwipe 语义：转换为 Custom action
-            node["action"] = "Custom"
-            node["custom_action"] = "MultiSwipeCustom"
-            node["custom_action_param"] = {"swipes": swipes}
-            # 移除已使用的 swipes 顶层字段，避免重复（custom_action_param 里已带）
-            node.pop("swipes", None)
-            changed += 1
-            print(f"  转换节点: {node_name} ({(len(swipes))}指)")
+        if node.get("action") != "MultiSwipe":
+            continue
+        swipes = node.get("swipes")
+        if not isinstance(swipes, list):
+            continue
+
+        node["action"] = "Custom"
+        node["custom_action"] = "MultiSwipeCustom"
+        node["custom_action_param"] = {"swipes": swipes}
+        node.pop("swipes", None)
+        changed += 1
 
     if changed:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        print(f"[DONE] {os.path.basename(path)}: 转换 {changed} 个 MultiSwipe 节点")
+        path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=4) + "\n",
+            encoding="utf-8",
+        )
+        print(f"  [CONVERT] {path.name}: {changed} MultiSwipe -> MultiSwipeCustom")
     else:
-        print(f"[NONE] {os.path.basename(path)}")
+        print(f"  [NONE] {path.name}")
     return changed
 
 
-def main():
-    total = 0
-    for name in sorted(os.listdir(PIPELINE_DIR)):
-        if not name.endswith(".json"):
-            continue
-        path = os.path.join(PIPELINE_DIR, name)
-        total += convert_file(path)
-    print(f"\n===== 共转换 {total} 个 MultiSwipe 节点 =====")
+def convert_pipeline_dir(pipeline_dir: Path) -> int:
+    files = sorted(pipeline_dir.glob("*.json"))
+    if not files:
+        print(f"  [WARN] {pipeline_dir} 里没有 JSON pipeline。")
+        return 0
+
+    total = sum(convert_file(path) for path in files)
+    print(f"  [CONVERT] 共转换 {total} 个 MultiSwipe 节点")
+    return total
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        description="把 pipeline 里的 MultiSwipe 转换为 Android Custom action"
+    )
+    parser.add_argument(
+        "pipeline_dir",
+        type=Path,
+        help="pipeline 目录，例如 app/src/main/assets/resource/base/pipeline",
+    )
+    args = parser.parse_args(argv)
+
+    if not args.pipeline_dir.is_dir():
+        parser.error(f"pipeline 目录不存在: {args.pipeline_dir}")
+
+    convert_pipeline_dir(args.pipeline_dir)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
