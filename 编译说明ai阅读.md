@@ -4,7 +4,7 @@
 `/storage/emulated/0/火影MAA安卓脚本开发/MAAFW-Android-火影忍者手游/`
 
 ## 环境
-- AndroidIDE（JDK17 + Gradle 7.4.2 + Android SDK 于 `/root/android-sdk`）
+- AndroidIDE（JDK17 / JDK21 + Gradle 8.5 + Android SDK 于 `/root/android-sdk`）
 - 或 Ubuntu proot（路线 B）
 
 ## 编译命令（项目根目录执行）

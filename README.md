@@ -86,7 +86,7 @@
 | 引擎 | MaaFramework（`libMaaFramework.so`）+ libbridge.so |
 | 原生调用 | JNA `5.14.0` |
 | 权限通道 | rikka.shizuku `13.1.5`、rikka.sui、Root（app_process） |
-| 构建 | Android Gradle Plugin `7.2.2`、Kotlin `1.8.22` |
+| 构建 | Android Gradle Plugin `8.1.4`、Kotlin `1.8.22` |
 | 其它 | Gson、kotlinx-coroutines、RecyclerView、Material Components |
 
 ---
@@ -150,7 +150,7 @@ App 需要的权限见 `app/src/main/AndroidManifest.xml`，主要包括：通�
 ### 方式一：PC / 终端（推荐）
 
 ```bash
-# 1. 环境要求：JDK 8+、Android SDK（build-tools 34.0.4）
+# 1. 环境要求：JDK 17+（兼容 JDK 21）、Android SDK（build-tools 34.0.4）
 export ANDROID_HOME=/path/to/android-sdk
 
 # 2. 编译 debug APK
