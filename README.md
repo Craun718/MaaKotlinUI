@@ -25,12 +25,11 @@
 - **原生运行 MaaFramework**：无需模拟器 / 无需 PC，Android 上直接加载 `libMaaFramework.so` 执行图像识别脚本。
 - **Shizuku / Root 双通道**：优先使用 Shizuku（无 Root 也能运行），也支持 Root 模式（`app_process` 拉起 root 引擎进程），UI 无感切换。
 - **独立引擎进程**：引擎运行在 Shizuku UserService 或 Root 进程中，App 进程只做编排与展示，避免 ANR 与内存压力。
-- **前台 / 后台双模式**：游戏可运行在物理屏（前台挂机），也可运行在虚拟显示器（后台无界面运行）。
 - **虚拟屏截图与触摸注入**：通过 `VirtualDisplayManager` + `libbridge.so` 完成截屏与输入注入。
 - **JNA 绑定**：`MaaFrameworkEngine` 封装 `MaaTasker / MaaController / MaaResource` 等核心 API。
 - **引擎复用**：任务正常结束后复用 `resource/controller/tasker`、清识别缓存并重连控制器，单任务可省数秒。
 - **守护自愈**：App 心跳看门狗、引擎 shutdown hook、显示漂移检测、异常断开后自动断点续跑。
-- **定时任务**：闹钟 + 开机广播 + Root 守护进程（Root 模式下 App 被清理也能准时执行）。
+- **定时任务**：闹钟 + 开机广播 + Root 守护进程（Root 模式下即使 App 未运行也能准时执行）。
 - **任务通知**：任务开始 / 完成 / 出错通知，支持 Webhook、Server酱、钉钉、喵提醒、SMTP 等第三方推送。
 - **日志诊断体系**：三层启动诊断日志（App 侧绑定 / 引擎侧启动 / Root 侧启动）+ 独立 logcat 进程。
 
