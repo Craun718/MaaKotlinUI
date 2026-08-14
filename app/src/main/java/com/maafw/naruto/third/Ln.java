@@ -3,7 +3,7 @@ package com.maafw.naruto.third;
 import android.util.Log;
 
 /**
- * 日志工具，远端进程也输出到 Android Logcat 喵。
+ * 日志工具，远端进程也输出到 Android Logcat 。
  */
 public final class Ln {
 

@@ -7,17 +7,17 @@ import android.util.Log
 import android.view.WindowManager
 
 /**
- * 通过 Shizuku 环境反射拿到系统服务的辅助类喵～
- * 因为我们是 shell/adb 身份，可以直接访问 ServiceManager 里的隐藏服务喵。
+ * 通过 Shizuku 环境反射拿到系统服务的辅助类
+ * 因为我们是 shell/adb 身份，可以直接访问 ServiceManager 里的隐藏服务。
  */
 object SystemServiceHelper {
 
     private const val TAG = "SystemServiceHelper"
 
     /**
-     * 反射获取 InputManager 实例喵。
+     * 反射获取 InputManager 实例。
      * 官方 Context.INPUT_SERVICE 在普通应用里拿不到注入权限，
-     * 这里直接从 ServiceManager.getService("input") 构造喵。
+     * 这里直接从 ServiceManager.getService("input") 构造。
      */
     fun getInputManager(): InputManager? {
         return try {
@@ -27,13 +27,13 @@ object SystemServiceHelper {
             ctor.isAccessible = true
             ctor.newInstance(binder) as InputManager
         } catch (e: Exception) {
-            Log.e(TAG, "获取 InputManager 失败喵：${e.message}")
+            Log.e(TAG, "获取 InputManager 失败：${e.message}")
             null
         }
     }
 
     /**
-     * 反射获取 WindowManager 服务喵。
+     * 反射获取 WindowManager 服务。
      */
     fun getWindowManager(): WindowManager? {
         return try {
@@ -43,13 +43,13 @@ object SystemServiceHelper {
             ctor.isAccessible = true
             ctor.newInstance(binder) as WindowManager
         } catch (e: Exception) {
-            Log.e(TAG, "获取 WindowManager 失败喵：${e.message}")
+            Log.e(TAG, "获取 WindowManager 失败：${e.message}")
             null
         }
     }
 
     /**
-     * 通用获取 IBinder 喵。
+     * 通用获取 IBinder 。
      */
     fun getServiceBinder(name: String): IBinder? {
         return try {
@@ -57,7 +57,7 @@ object SystemServiceHelper {
             val method = cls.getMethod("getService", String::class.java)
             method.invoke(null, name) as? IBinder
         } catch (e: Exception) {
-            Log.e(TAG, "获取 $name 失败喵：${e.message}")
+            Log.e(TAG, "获取 $name 失败：${e.message}")
             null
         }
     }

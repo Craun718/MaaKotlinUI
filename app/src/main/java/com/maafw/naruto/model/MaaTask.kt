@@ -3,8 +3,8 @@ package com.maafw.naruto.model
 import com.google.gson.annotations.SerializedName
 
 /**
- * MaaFramework 前端任务项喵～
- * 对应 assets/interface.json 里的 task 对象喵。
+ * MaaFramework 前端任务项
+ * 对应 assets/interface.json 里的 task 对象。
  */
 data class MaaTask(
     val name: String = "",

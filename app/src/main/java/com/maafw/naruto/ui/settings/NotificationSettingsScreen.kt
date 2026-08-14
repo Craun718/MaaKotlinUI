@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 第三方通知设置页喵～
+ * 第三方通知设置页
  * 最前面：任务完成/出错两个独立开关；下面：各渠道卡片，点击选中并展开对应配置。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,6 +35,7 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
 
     var notifySuccess by remember { mutableStateOf(SettingsRepository.isPushNotifySuccess(context)) }
     var notifyError by remember { mutableStateOf(SettingsRepository.isPushNotifyError(context)) }
+    var notifyStart by remember { mutableStateOf(SettingsRepository.isPushNotifyStart(context)) }
     var pushChannel by remember { mutableStateOf(SettingsRepository.getPushChannel(context)) }
 
     val channels = listOf(
@@ -65,13 +66,27 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
             ),
             verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm)
         ) {
-            // 完成/出错独立开关（放在最前面）喵
+            // 完成/出错独立开关（放在最前面）
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(MaaDesignTokens.CornerRadius.card)
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        SettingRow(
+                            title = "任务开始时推送",
+                            description = "任务开始执行时推送（默认关闭）",
+                            trailing = {
+                                Switch(
+                                    checked = notifyStart,
+                                    onCheckedChange = {
+                                        notifyStart = it
+                                        SettingsRepository.setPushNotifyStart(context, it)
+                                    }
+                                )
+                            }
+                        )
+                        ListItemDivider()
                         SettingRow(
                             title = "任务完成时推送",
                             description = "定时任务执行完毕后推送",
@@ -103,7 +118,7 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
                 }
             }
 
-            // 渠道卡片按钮喵
+            // 渠道卡片按钮
             items(channels) { (value, label) ->
                 Card(
                     modifier = Modifier
@@ -142,7 +157,7 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // 选中渠道的配置区喵
+                // 选中渠道的配置区
                 if (pushChannel == value && value != "none") {
                     ChannelConfig(value)
                 }
@@ -153,13 +168,7 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
                 if (pushChannel != "none") {
                     Button(
                         onClick = {
-                            scope.launch {
-                                val result = withContext(Dispatchers.IO) {
-                                    runCatching {
-                                        com.maafw.naruto.data.notify.NotificationPusher.push(context, "MAAFW 测试通知", "这是一条测试推送喵", true)
-                                        "已发送，请查看推送端"
-                                    }.getOrElse { "发送失败: ${it.message}" }
-                                }
+                            com.maafw.naruto.data.notify.PushDispatcher.test(context, pushChannel) { result ->
                                 android.widget.Toast.makeText(context, result, android.widget.Toast.LENGTH_LONG).show()
                             }
                         },
@@ -173,7 +182,7 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
     }
 }
 
-/** 渠道配置输入区（按选中渠道显示）喵 */
+/** 渠道配置输入区（按选中渠道显示） */
 @Composable
 private fun ChannelConfig(channel: String) {
     val context = LocalContext.current
@@ -205,7 +214,7 @@ private fun PushTextField(
     onChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 内部可变状态：输入实时更新并回调，避免输入内容丢失喵
+    // 内部可变状态：输入实时更新并回调，避免输入内容丢失
     var text by remember { mutableStateOf(value) }
     OutlinedTextField(
         value = text,

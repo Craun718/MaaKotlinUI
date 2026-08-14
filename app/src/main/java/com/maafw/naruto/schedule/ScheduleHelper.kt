@@ -14,8 +14,8 @@ import com.maafw.naruto.schedule.model.TimeOfDay
 import java.util.Calendar
 
 /**
- * 定时任务调度助手喵～
- * 用 AlarmManager 设置 / 取消定时唤醒喵。
+ * 定时任务调度助手
+ * 用 AlarmManager 设置 / 取消定时唤醒。
  */
 object ScheduleHelper {
 
@@ -42,19 +42,19 @@ object ScheduleHelper {
 
         val nextTime = calculateNextTime(item.hour, item.minute, item.repeatDays)
         if (nextTime < 0) {
-            Log.w(TAG, "任务 ${item.id} 没有可用的下次执行时间喵")
+            Log.w(TAG, "任务 ${item.id} 没有可用的下次执行时间")
             return
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!alarmManager.canScheduleExactAlarms()) {
-                Log.w(TAG, "没有精确闹钟权限喵")
+                Log.w(TAG, "没有精确闹钟权限")
                 return
             }
         }
 
         alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextTime, pendingIntent)
-        Log.i(TAG, "定时任务已设置：${item.toLogString()} 下次=${formatTime(nextTime)} 喵")
+        Log.i(TAG, "定时任务已设置：${item.toLogString()} 下次=${formatTime(nextTime)} ")
     }
 
     fun cancel(context: Context, id: Int) {
@@ -70,18 +70,18 @@ object ScheduleHelper {
         )
         alarmManager.cancel(pendingIntent)
         pendingIntent.cancel()
-        Log.i(TAG, "取消定时任务：$id 喵")
+        Log.i(TAG, "取消定时任务：$id ")
     }
 
     fun rescheduleAll(context: Context, items: List<ScheduleItem>) {
-        // 先全部取消喵
+        // 先全部取消
         items.forEach { cancel(context, it.id) }
-        // 再设置启用的喵
+        // 再设置启用的
         items.filter { it.enabled && it.repeatDays.isNotEmpty() }.forEach { schedule(context, it) }
     }
 
     /**
-     * 计算下一次触发时间喵。
+     * 计算下一次触发时间。
      */
     fun calculateNextTime(hour: Int, minute: Int, repeatDays: Set<Int>): Long {
         val now = Calendar.getInstance()
@@ -114,9 +114,9 @@ object ScheduleHelper {
     private const val STRATEGY_REQUEST_BASE = 0x534D4100.toInt()
 
     /**
-     * 为策略注册下一个闹钟喵（ ScheduleAlarmManager.scheduleNext）。
+     * 为策略注册下一个闹钟（ ScheduleAlarmManager.scheduleNext）。
      * 「后台唤醒」开启时用 setAlarmClock（强制精确唤醒 + 状态栏闹钟图标），
-     * 即使手机锁屏/应用未启动也能可靠拉起任务喵。
+     * 即使手机锁屏/应用未启动也能可靠拉起任务。
      */
     fun scheduleStrategy(context: Context, strategy: ScheduleStrategy) {
         cancelStrategy(context, strategy.id)
@@ -130,7 +130,7 @@ object ScheduleHelper {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (alarmManager.canScheduleExactAlarms()) {
                 if (wakeOn) {
-                    // 后台唤醒：闹钟式，强制脱离 Doze 精确触发，锁屏也能拉起任务喵
+                    // 后台唤醒：闹钟式，强制脱离 Doze 精确触发，锁屏也能拉起任务
                     alarmManager.setAlarmClock(
                         AlarmManager.AlarmClockInfo(nextTrigger, buildShowIntent(context)),
                         pendingIntent,
@@ -155,10 +155,10 @@ object ScheduleHelper {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextTrigger, pendingIntent)
             }
         }
-        Log.i(TAG, "定时策略已注册：[${strategy.name}] 下次=${formatTime(nextTrigger)} 后台唤醒=$wakeOn 喵")
+        Log.i(TAG, "定时策略已注册：[${strategy.name}] 下次=${formatTime(nextTrigger)} 后台唤醒=$wakeOn ")
     }
 
-    /** 取消策略的闹钟喵 */
+    /** 取消策略的闹钟 */
     fun cancelStrategy(context: Context, strategyId: String) {
         val alarmManager = context.applicationContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pendingIntent = buildStrategyPendingIntent(context, strategyId)
@@ -166,12 +166,12 @@ object ScheduleHelper {
         pendingIntent.cancel()
     }
 
-    /** 重新调度所有启用的策略喵 */
+    /** 重新调度所有启用的策略 */
     fun rescheduleStrategies(context: Context, strategies: List<ScheduleStrategy>) {
         strategies.filter { it.enabled }.forEach { scheduleStrategy(context, it) }
     }
 
-    /** 计算策略的下次触发时间（epoch ms）喵 */
+    /** 计算策略的下次触发时间（epoch ms） */
     fun computeNextTriggerMs(strategy: ScheduleStrategy, afterEpochMs: Long): Long? {
         return when (strategy.scheduleType) {
             ScheduleType.FIXED_TIME -> computeNextFixedTimeMs(strategy, afterEpochMs)
@@ -231,7 +231,7 @@ object ScheduleHelper {
         }
     }
 
-    /** 计算下次触发时间用于 UI 显示（MM-dd HH:mm）喵 */
+    /** 计算下次触发时间用于 UI 显示（MM-dd HH:mm） */
     fun formatNextTriggerForDisplay(strategy: ScheduleStrategy): String? {
         val next = computeNextTriggerMs(strategy, 0L) ?: return null
         val cal = Calendar.getInstance().apply { timeInMillis = next }

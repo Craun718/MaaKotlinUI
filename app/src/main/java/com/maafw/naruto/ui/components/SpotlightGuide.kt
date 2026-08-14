@@ -34,7 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
- * 聚光灯操作引导（Spotlight / Coach Marks）喵～
+ * 聚光灯操作引导（Spotlight / Coach Marks）
  * 专业 App 同款：暗色遮罩 + 目标区域高亮挖洞 + 呼吸描边 + 底部引导卡（进度点/跳过/上一步/下一步）。
  */
 
@@ -45,7 +45,7 @@ data class GuideStep(
 )
 
 /**
- * 全局操作引导控制器喵～
+ * 全局操作引导控制器
  * 由 MainActivity 持有并在 Scaffold 之外渲染，避免被底部导航栏遮挡、坐标错位。
  */
 class GuideController {
@@ -104,7 +104,7 @@ fun SpotlightGuide(
     )
 
     Box(modifier = modifier.fillMaxSize()) {
-        // 暗色遮罩 + 目标挖洞（Path EvenOdd：全屏矩形 + 目标圆角矩形，洞区域不填充）喵
+        // 暗色遮罩 + 目标挖洞（Path EvenOdd：全屏矩形 + 目标圆角矩形，洞区域不填充）
         if (target != null) {
             Box(
                 Modifier
@@ -145,7 +145,7 @@ fun SpotlightGuide(
             )
         }
 
-        // 引导卡：垂直居中偏上显示，避免被底部导航栏遮挡喵
+        // 引导卡：垂直居中偏上显示，避免被底部导航栏遮挡
         Card(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -221,7 +221,7 @@ fun SpotlightGuide(
 }
 
 /**
- * 目标坐标收集器：挂在目标组件上，把全局坐标写入 map 喵。
+ * 目标坐标收集器：挂在目标组件上，把全局坐标写入 map 。
  * 用法：val targets = remember { mutableStateMapOf<String, Rect>() }
  *       Modifier.then(rememberGuideTarget("key", targets))
  */

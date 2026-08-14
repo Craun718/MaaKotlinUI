@@ -11,7 +11,7 @@ import java.io.File;
 import java.lang.reflect.Method;
 
 /**
- * Root 服务入口（app_process main）喵～
+ * Root 服务入口（app_process main）～
  * root 进程启动后把引擎 binder 注册到系统 ServiceManager（root 可 addService），
  * app 侧通过 ServiceManager.getService 获取——与 Shizuku 完全一致的 binder 接口。
  * 生命周期：守护 app 进程，app 退出后自动销毁引擎并退出，避免孤儿进程。
@@ -65,8 +65,12 @@ public final class RootServiceStarter {
         System.exit(0);
     }
 
-    /** 把引擎 binder 注册为系统服务（uid=0 可 addService）喵 */
+    /** 把引擎 binder 回传给 App（P1-5：优先 ContentProvider 握手，Android16 兼容；失败兜底 addService） */
     private static boolean publishService(RootUserService.CreatedService createdService) {
+        if (attachViaContentProvider(createdService)) {
+            Ln.i(TAG + ": ContentProvider attach ok");
+            return true;
+        }
         try {
             Class<?> smClass = Class.forName("android.os.ServiceManager");
             Method add = smClass.getMethod("addService", String.class, IBinder.class);
@@ -79,7 +83,89 @@ public final class RootServiceStarter {
         }
     }
 
-    /** 守护 app 进程：app 退出后销毁引擎并退出 root 进程（复制 MAA-Meow 生命周期语义）喵 */
+    /**
+     * P1-5：root 进程经 ContentProvider.call 把引擎 binder 回传给 App。
+     * App 侧 RootServiceBootstrapProvider.call 校验后完成 Registry，App 无需轮询 ServiceManager。
+     * 同时拿到 App 的 lifecycleBinder（linkToDeath 守护）+ appPid（喂引擎心跳）。
+     */
+    private static boolean attachViaContentProvider(RootUserService.CreatedService createdService) {
+        try {
+            String pkg = createdService.packageName;
+            String authority = pkg + RootServiceBootstrapRegistry.AUTHORITY_SUFFIX;
+            // ActivityManager.getService() → IActivityManager
+            Class<?> amClass = Class.forName("android.app.ActivityManager");
+            Object am = amClass.getMethod("getService").invoke(null);
+            // getContentProviderExternal(authority, userId, token, callingTag)
+            Method getCpe = null;
+            for (Method m : am.getClass().getMethods()) {
+                if (m.getName().equals("getContentProviderExternal") && m.getParameterCount() == 4) {
+                    getCpe = m;
+                    break;
+                }
+            }
+            if (getCpe == null) return false;
+            IBinder providerToken = new Binder();
+            Object provider = getCpe.invoke(am, authority, 0, providerToken, authority);
+            if (provider == null) return false;
+            try {
+                android.os.Bundle extras = new android.os.Bundle();
+                extras.putString(RootServiceBootstrapRegistry.KEY_TOKEN, createdService.token);
+                extras.putBinder(RootServiceBootstrapRegistry.KEY_SERVICE_BINDER, createdService.service);
+                Object reply = callProvider(provider, authority, extras);
+                if (reply instanceof android.os.Bundle) {
+                    android.os.Bundle rb = (android.os.Bundle) reply;
+                    IBinder appBinder = rb.getBinder(RootServiceBootstrapRegistry.KEY_APP_BINDER);
+                    int appPid = rb.getInt(RootServiceBootstrapRegistry.KEY_APP_PID, 0);
+                    if (appBinder != null) {
+                        // App 生命周期 binder：App 死则 root 服务自杀
+                        appBinder.linkToDeath(() -> {
+                            Ln.i(TAG + ": app binder died, destroying root service");
+                            destroyService(activeService != null ? activeService.service : createdService.service);
+                            System.exit(0);
+                        }, 0);
+                    }
+                    // 喂引擎心跳（App pid），引擎看门狗据此守护
+                    if (appPid > 0 && createdService.service instanceof com.maafw.naruto.IRemoteEngineService) {
+                        try {
+                            ((com.maafw.naruto.IRemoteEngineService) createdService.service).heartbeat(appPid);
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                    Ln.i(TAG + ": attach ok, appPid=" + appPid);
+                    return true;
+                }
+            } finally {
+                try {
+                    am.getClass().getMethod("removeContentProviderExternal", String.class, IBinder.class)
+                            .invoke(am, authority, providerToken);
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable t) {
+            Ln.e(TAG + ": attachViaContentProvider failed", t);
+        }
+        return false;
+    }
+
+    /** IContentProvider.call 多版本签名兼容（5 参 / 4 参） */
+    private static Object callProvider(Object provider, String authority, android.os.Bundle extras) throws Exception {
+        Method call5 = null, call4 = null;
+        for (Method m : provider.getClass().getMethods()) {
+            if (m.getName().equals("call")) {
+                if (m.getParameterCount() == 5 && m.getParameterTypes()[4] == android.os.Bundle.class) call5 = m;
+                else if (m.getParameterCount() == 4 && m.getParameterTypes()[3] == android.os.Bundle.class) call4 = m;
+            }
+        }
+        if (call5 != null) {
+            return call5.invoke(provider, null, authority, RootServiceBootstrapRegistry.METHOD_ATTACH_REMOTE_SERVICE, null, extras);
+        }
+        if (call4 != null) {
+            return call4.invoke(provider, authority, RootServiceBootstrapRegistry.METHOD_ATTACH_REMOTE_SERVICE, null, extras);
+        }
+        return null;
+    }
+
+    /** 守护 app 进程：app 退出后销毁引擎并退出 root 进程（保证 app 退出后引擎不残留） */
     private static void watchAppProcess(int appPid) {
         Thread watcher = new Thread(() -> {
             Ln.i(TAG + ": watching app pid=" + appPid);

@@ -16,7 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * 面板标题栏喵～
+ * 面板标题栏
  *  PanelHeader.kt，删除了锁定/主页按钮，仅保留 Tab 切换。
  */
 enum class NarutoPanelTab(val title: String) {

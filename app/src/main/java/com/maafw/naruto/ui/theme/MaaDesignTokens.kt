@@ -4,7 +4,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- *  设计令牌喵～
+ *  设计令牌
  *  的视觉规范：间距 / 圆角 / 分隔线 / 卡片。
  */
 object MaaDesignTokens {

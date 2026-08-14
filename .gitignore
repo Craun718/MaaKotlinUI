@@ -4,3 +4,7 @@ app/src/main/assets/
 /local.properties
 /app/build/
 /build/
+app/src/main/native/obj/
+
+# JNI shared libraries (build artifacts)
+app/src/main/jniLibs/**/*.so

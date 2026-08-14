@@ -3,8 +3,8 @@ package com.maafw.naruto.ui.components
 import com.maafw.naruto.model.MaaTask
 
 /**
- * 任务分类喵～
- * 根据 MAAFW-Narutomobile-main 的 interface.json 任务名做的手机端分类喵。
+ * 任务分类
+ * 根据 MAAFW-Narutomobile-main 的 interface.json 任务名做的手机端分类。
  */
 enum class TaskCategory(val title: String, val icon: String) {
     START("启动退出", "power_settings_new"),
@@ -17,7 +17,7 @@ enum class TaskCategory(val title: String, val icon: String) {
 }
 
 /**
- * 根据任务 entry 判断分类喵。
+ * 根据任务 entry 判断分类。
  */
 fun MaaTask.category(): TaskCategory {
     return when (this.entry) {

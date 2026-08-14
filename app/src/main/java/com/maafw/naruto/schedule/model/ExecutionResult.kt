@@ -1,7 +1,7 @@
 package com.maafw.naruto.schedule.model
 
 /**
- * 定时任务执行结果喵～
+ * 定时任务执行结果
  *  ExecutionResult.kt。
  */
 enum class ExecutionResult {

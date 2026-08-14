@@ -13,7 +13,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 
 /**
- *  风格 TopAppBar 喵～
+ *  风格 TopAppBar 
  * 背景色用 background，标题用 headlineMedium 半粗体。
  */
 @OptIn(ExperimentalMaterial3Api::class)

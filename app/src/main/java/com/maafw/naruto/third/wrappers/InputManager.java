@@ -6,13 +6,13 @@ import android.view.InputEvent;
 import android.view.MotionEvent;
 import android.util.Log;
 
-import com.maafw.naruto.third.FakeContext;
+import com.maafw.naruto.third.ShellContext;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 /**
- * InputManager 隐藏 API 包装喵。
+ * InputManager 隐藏 API 包装。
  */
 @SuppressLint("PrivateApi,DiscouragedPrivateApi")
 public final class InputManager {
@@ -29,7 +29,7 @@ public final class InputManager {
     private static Method setDisplayIdMethod;
 
     static InputManager create() {
-        android.hardware.input.InputManager manager = (android.hardware.input.InputManager) FakeContext.get()
+        android.hardware.input.InputManager manager = (android.hardware.input.InputManager) ShellContext.get()
                 .getSystemService(Context.INPUT_SERVICE);
         return new InputManager(manager);
     }

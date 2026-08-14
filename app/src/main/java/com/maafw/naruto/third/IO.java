@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * IO 工具喵。
+ * IO 工具。
  */
 public final class IO {
 

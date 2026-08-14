@@ -6,7 +6,7 @@ import android.content.Intent
 import android.os.Build
 
 /**
- * 国产 ROM 自启动设置页面引导喵～
+ * 国产 ROM 自启动设置页面引导
  *  AutoStartHelper.kt。
  */
 object AutoStartHelper {

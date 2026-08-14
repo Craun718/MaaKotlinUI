@@ -6,8 +6,8 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
 /**
- * 定时任务仓库喵～
- * 用 SharedPreferences + Gson 简单持久化喵。
+ * 定时任务仓库
+ * 用 SharedPreferences + Gson 简单持久化。
  */
 object ScheduleRepository {
 

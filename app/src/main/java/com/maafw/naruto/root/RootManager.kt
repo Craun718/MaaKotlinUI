@@ -4,7 +4,7 @@ import android.util.Log
 import java.io.File
 
 /**
- * Root 权限管理器喵～
+ * Root 权限管理器
  *  RootManager.kt，用 Runtime su 替代 libsu（不引入新依赖）。
  */
 object RootManager {

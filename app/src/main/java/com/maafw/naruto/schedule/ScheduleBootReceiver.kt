@@ -5,10 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.maafw.naruto.data.schedule.ScheduleRepository
-import com.maafw.naruto.schedule.data.ScheduleStrategyRepository
+import com.maafw.naruto.schedule.data.SchedulePolicyRepository
 
 /**
- * 开机后重新注册所有定时任务喵～
+ * 开机后重新注册所有定时任务
  */
 class ScheduleBootReceiver : BroadcastReceiver() {
 
@@ -18,12 +18,12 @@ class ScheduleBootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        Log.i(TAG, "开机完成，重新注册定时任务喵")
+        Log.i(TAG, "开机完成，重新注册定时任务")
         // 旧 ScheduleItem（兼容）
         val items = ScheduleRepository.load(context)
         ScheduleHelper.rescheduleAll(context, items)
         // 策略（）
-        val strategies = ScheduleStrategyRepository(context).load()
+        val strategies = SchedulePolicyRepository(context).load()
         ScheduleHelper.rescheduleStrategies(context, strategies)
     }
 }

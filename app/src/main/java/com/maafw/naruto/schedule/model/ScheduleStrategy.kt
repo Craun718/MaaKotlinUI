@@ -3,7 +3,7 @@ package com.maafw.naruto.schedule.model
 import java.util.UUID
 
 /**
- * 定时策略类型喵～
+ * 定时策略类型
  *  ScheduleType。
  */
 enum class ScheduleType {
@@ -14,7 +14,7 @@ enum class ScheduleType {
 }
 
 /**
- * 每日触发时刻喵esugar）。
+ * 每日触发时刻esugar）。
  */
 data class TimeOfDay(
     val hour: Int,
@@ -47,7 +47,7 @@ data class TimeOfDay(
 }
 
 /**
- * 定时任务策略喵～
+ * 定时任务策略
  *  ScheduleStrategy.kt：
  * - daysOfWeek 用 Int 集合，1=周一 … 7=周日（ISO 值），
  * - executionTimes 用 [TimeOfDay] 列表
@@ -75,6 +75,14 @@ data class ScheduleStrategy(
     val autoSleepAfterTask: Boolean = false,
     /** 任务结束后关闭游戏 */
     val closeGameAfterTask: Boolean = false,
+    /** 使用 Shizuku 在后台无应用进程时主动唤醒并启动服务 */
+    val shizukuWakeApp: Boolean = false,
+    /**
+     * 使用 Root 在后台无应用进程时主动唤醒并启动服务。
+     * 比 Shizuku 唤醒更可靠：闹钟触发后以 root 执行 am start 把 App 强拉前台
+     * （解除 Android12+ 后台启动前台服务限制），引擎也走 root 进程，完全不依赖 Shizuku。
+     */
+    val rootWakeApp: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val lastExecutedAt: Long? = null,
     val lastResult: ExecutionResult? = null,

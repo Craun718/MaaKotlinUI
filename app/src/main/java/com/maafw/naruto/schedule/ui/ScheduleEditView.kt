@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.maafw.naruto.data.profile.ProfileManager
 import com.maafw.naruto.schedule.ScheduleHelper
-import com.maafw.naruto.schedule.data.ScheduleStrategyRepository
+import com.maafw.naruto.schedule.data.SchedulePolicyRepository
 import com.maafw.naruto.schedule.model.ScheduleStrategy
 import com.maafw.naruto.schedule.model.ScheduleType
 import com.maafw.naruto.schedule.model.TimeOfDay
@@ -35,11 +35,11 @@ import java.util.Calendar
 import java.util.UUID
 
 /**
- * 定时策略编辑页喵～
+ * 定时策略编辑页
  *  ScheduleEditView.kt + ScheduleEditViewModel.kt 合并：
- * - NavController → onBack 回调
- * - java.time → TimeOfDay / Calendar
- * - SegmentedButton → 自定义分段选择（兼容 material3 1.1.x）
+ * - NavController -> onBack 回调
+ * - java.time -> TimeOfDay / Calendar
+ * - SegmentedButton -> 自定义分段选择（兼容 material3 1.1.x）
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -48,7 +48,7 @@ fun ScheduleEditView(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val repository = remember { ScheduleStrategyRepository(context) }
+    val repository = remember { SchedulePolicyRepository(context) }
 
     // ---- 编辑状态 ----
     var name by remember { mutableStateOf("") }
@@ -62,10 +62,12 @@ fun ScheduleEditView(
     var forceStart by remember { mutableStateOf(false) }
     var autoSleepAfterTask by remember { mutableStateOf(false) }
     var closeGameAfterTask by remember { mutableStateOf(false) }
+    var shizukuWakeApp by remember { mutableStateOf(false) }
+    var rootWakeApp by remember { mutableStateOf(false) }
     var existingStrategy by remember { mutableStateOf<ScheduleStrategy?>(null) }
     var profiles by remember { mutableStateOf(ProfileManager.listProfiles(context).ifEmpty { listOf("default") }) }
 
-    // 每次进入编辑页刷新配置列表（脚本页可能新建了配置）喵
+    // 每次进入编辑页刷新配置列表（脚本页可能新建了配置）
     LaunchedEffect(Unit) {
         profiles = ProfileManager.listProfiles(context).ifEmpty { listOf("default") }
     }
@@ -86,6 +88,8 @@ fun ScheduleEditView(
                 forceStart = s.forceStart
                 autoSleepAfterTask = s.autoSleepAfterTask
                 closeGameAfterTask = s.closeGameAfterTask
+                shizukuWakeApp = s.shizukuWakeApp
+                rootWakeApp = s.rootWakeApp
                 return@LaunchedEffect
             }
         }
@@ -97,9 +101,10 @@ fun ScheduleEditView(
     var showTimePicker by remember { mutableStateOf(false) }
     var editingTime by remember { mutableStateOf<TimeOfDay?>(null) }
     var showPermissionDialog by remember { mutableStateOf(false) }
-    var needBatteryOptimization by remember { mutableStateOf(false) }
-    var needExactAlarm by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+var needBatteryOptimization by remember { mutableStateOf(false) }
+var needExactAlarm by remember { mutableStateOf(false) }
+var needRootPermission by remember { mutableStateOf(false) }
+var errorMessage by remember { mutableStateOf<String?>(null) }
 
     fun validateAndSave() {
         if (name.isBlank()) {
@@ -150,6 +155,8 @@ fun ScheduleEditView(
             forceStart = forceStart,
             autoSleepAfterTask = autoSleepAfterTask,
             closeGameAfterTask = closeGameAfterTask,
+            shizukuWakeApp = shizukuWakeApp,
+            rootWakeApp = rootWakeApp,
         ) ?: ScheduleStrategy(
             id = strategyId ?: UUID.randomUUID().toString(),
             name = name.trim(),
@@ -163,6 +170,8 @@ fun ScheduleEditView(
             forceStart = forceStart,
             autoSleepAfterTask = autoSleepAfterTask,
             closeGameAfterTask = closeGameAfterTask,
+            shizukuWakeApp = shizukuWakeApp,
+            rootWakeApp = rootWakeApp,
         )
 
         if (existingStrategy == null) {
@@ -174,13 +183,16 @@ fun ScheduleEditView(
         ScheduleHelper.cancelStrategy(context, strategy.id)
         ScheduleHelper.scheduleStrategy(context, strategy)
 
+        // Root 唤醒开启但未授权 -> 并入权限对话框提示（不阻止保存，策略已注册）
+        needRootPermission = rootWakeApp && !com.maafw.naruto.root.RootManager.isRootGranted()
+
         // 检查关键权限（）
         val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
         needBatteryOptimization = !pm.isIgnoringBatteryOptimizations(context.packageName)
         needExactAlarm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                 !(context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager).canScheduleExactAlarms()
 
-        if (needBatteryOptimization || needExactAlarm) {
+        if (needBatteryOptimization || needExactAlarm || needRootPermission) {
             showPermissionDialog = true
         } else {
             onBack()
@@ -569,6 +581,52 @@ fun ScheduleEditView(
             }
 
             item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Shizuku 唤醒应用", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = shizukuWakeApp,
+                        onCheckedChange = { on ->
+                            shizukuWakeApp = on
+                            if (on) rootWakeApp = false // 与 Root 唤醒互斥
+                        }
+                    )
+                }
+                Text(
+                    "到时间后即使应用未在后台，也尝试通过 Shizuku 唤醒并运行任务",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = MaaDesignTokens.Spacing.sm)
+                )
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Root 唤醒应用", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = rootWakeApp,
+                        onCheckedChange = { on ->
+                            rootWakeApp = on
+                            if (on) shizukuWakeApp = false // 与 Shizuku 唤醒互斥
+                        }
+                    )
+                }
+                Text(
+                    "到时间后通过 Root 权限把应用强拉前台并运行任务（引擎也走 Root，不依赖 Shizuku；需已 Root）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = MaaDesignTokens.Spacing.sm)
+                )
+            }
+
+            item {
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -613,7 +671,8 @@ fun ScheduleEditView(
                 Text(
                     buildString {
                         if (needBatteryOptimization) append("• 请允许忽略电池优化，否则定时任务可能被系统杀死\n")
-                        if (needExactAlarm) append("• 请授予精确闹钟权限，否则定时任务无法准时触发")
+                        if (needExactAlarm) append("• 请授予精确闹钟权限，否则定时任务无法准时触发\n")
+                        if (needRootPermission) append("• 已开启 Root 唤醒但未授予 Root 权限，请在主页「权限检查」或设置页授权，否则任务触发时无法通过 Root 拉起应用")
                     }
                 )
             },

@@ -4,7 +4,7 @@ import com.sun.jna.Memory
 import com.sun.jna.Pointer
 
 /**
- * JNA 内存辅助工具喵～
+ * JNA 内存辅助工具
  */
 object MemoryUtil {
 

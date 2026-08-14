@@ -26,5 +26,7 @@ void ReleaseFrameBuffers();
 bool WriteHardwareBufferToFrame(AHardwareBuffer *buffer);
 jobject CreateFrameBufferBitmap(JNIEnv *env);
 int64_t GetFrameCount();
+double GetGameFps();
+double GetScriptFps();
 
 #endif // BRIDGE_FRAME_BUFFER_H

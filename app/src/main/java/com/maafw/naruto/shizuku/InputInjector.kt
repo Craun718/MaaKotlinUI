@@ -5,13 +5,13 @@ import android.os.SystemClock
 import android.view.InputDevice
 import android.view.InputEvent
 import android.view.MotionEvent
-import com.maafw.naruto.third.FakeContext
+import com.maafw.naruto.third.ShellContext
 import com.maafw.naruto.third.Ln
 import com.maafw.naruto.third.wrappers.InputManager
 import com.maafw.naruto.third.wrappers.ServiceManager
 
 /**
- * 输入注入器喵～
+ * 输入注入器
  * 在 shell 进程通过 InputManager.injectInputEvent 向指定 displayId 注入触摸/按键事件。
  *
  * 修复「DispatchInputMessage failed ret=-1」卡死：
@@ -38,6 +38,13 @@ object InputInjector {
 
     private val inputManager by lazy { ServiceManager.getInputManager() }
 
+    /**
+     * 同进程触摸回调（RemoteEngineServiceImpl 设置，binder 直达 App 供触摸预览）。
+     * 调用方需保证异步 + 限流，避免阻塞触摸注入（Swipe 卡死根因）。
+     */
+    @Volatile
+    var onInjectedTouch: ((action: Int, x: Int, y: Int) -> Unit)? = null
+
     private fun setPointerCoords(x: Float, y: Float, pressure: Float) {
         pointerCoords.x = kotlin.math.max(0f, x)
         pointerCoords.y = kotlin.math.max(0f, y)
@@ -60,7 +67,7 @@ object InputInjector {
         return inputManager.injectInputEvent(event, mode)
     }
 
-    /** 注入 + 失败重试（最多 3 次）喵 */
+    /** 注入 + 失败重试（最多 3 次） */
     private fun injectWithRetry(event: InputEvent, displayId: Int, mode: Int): Boolean {
         var ok = inject(event, displayId, mode)
         var attempt = 0
@@ -80,7 +87,7 @@ object InputInjector {
                 putExtra("x", x)
                 putExtra("y", y)
             }
-            FakeContext.get().sendBroadcast(intent)
+            ShellContext.get().sendBroadcast(intent)
         } catch (e: Exception) {
             Ln.w("broadcastTouch failed: ${e.message}")
         }
@@ -97,7 +104,10 @@ object InputInjector {
         val event = obtainEvent(currentDownTime, currentDownTime, MotionEvent.ACTION_DOWN, x.toFloat(), y.toFloat(), 1f)
         val ok = injectWithRetry(event, displayId, InputManager.INJECT_INPUT_EVENT_MODE_ASYNC)
         event.recycle()
-        if (ok) broadcastTouch(MotionEvent.ACTION_DOWN, x, y)
+        if (ok) {
+            broadcastTouch(MotionEvent.ACTION_DOWN, x, y)
+            onInjectedTouch?.invoke(MotionEvent.ACTION_DOWN, x, y)
+        }
         return ok
     }
 
@@ -108,7 +118,10 @@ object InputInjector {
         val event = obtainEvent(currentDownTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, x.toFloat(), y.toFloat(), 1f)
         val ok = inject(event, displayId, InputManager.INJECT_INPUT_EVENT_MODE_ASYNC)
         event.recycle()
-        if (ok) broadcastTouch(MotionEvent.ACTION_MOVE, x, y)
+        if (ok) {
+            broadcastTouch(MotionEvent.ACTION_MOVE, x, y)
+            onInjectedTouch?.invoke(MotionEvent.ACTION_MOVE, x, y)
+        }
         return ok
     }
 
@@ -120,7 +133,10 @@ object InputInjector {
         val ok = injectWithRetry(event, displayId, InputManager.INJECT_INPUT_EVENT_MODE_ASYNC)
         event.recycle()
         currentDownTime = 0L
-        if (ok) broadcastTouch(MotionEvent.ACTION_UP, x, y)
+        if (ok) {
+            broadcastTouch(MotionEvent.ACTION_UP, x, y)
+            onInjectedTouch?.invoke(MotionEvent.ACTION_UP, x, y)
+        }
         return ok
     }
 

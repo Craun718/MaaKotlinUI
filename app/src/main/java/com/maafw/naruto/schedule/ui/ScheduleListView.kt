@@ -1,6 +1,9 @@
 package com.maafw.naruto.schedule.ui
 
 import android.content.Context
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,13 +19,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -37,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,8 +55,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.maafw.naruto.schedule.ScheduleHelper
-import com.maafw.naruto.schedule.data.ScheduleStrategyRepository
+import com.maafw.naruto.schedule.data.ScheduleConfigManager
+import com.maafw.naruto.schedule.data.SchedulePolicyRepository
 import com.maafw.naruto.schedule.model.ExecutionResult
 import com.maafw.naruto.schedule.model.ScheduleStrategy
 import com.maafw.naruto.ui.components.GuideStep
@@ -54,12 +66,11 @@ import com.maafw.naruto.ui.components.MaaTopAppBar
 import com.maafw.naruto.ui.components.SpotlightGuide
 import com.maafw.naruto.ui.components.rememberGuideTarget
 import com.maafw.naruto.ui.theme.MaaDesignTokens
-
 /**
- * 定时任务列表页喵～
+ * 定时任务列表页
  *  ScheduleListView.kt：
- * - NavController → 回调 onBack/onEdit/onShowTriggerLog
- * - koinViewModel → 直接持有 ScheduleStrategyRepository
+ * - NavController -> 回调 onBack/onEdit/onShowTriggerLog
+ * - koinViewModel -> 直接持有 SchedulePolicyRepository
  * - 保留：策略卡片（下次触发/上次结果）、删除确认、自启动引导、空状态
  */
 @Composable
@@ -70,16 +81,80 @@ fun ScheduleListView(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val repository = remember { ScheduleStrategyRepository(context) }
+    val repository = remember { SchedulePolicyRepository(context) }
     var strategies by remember { mutableStateOf(repository.load()) }
     var deleteConfirmId by remember { mutableStateOf<String?>(null) }
     var showAutoStartGuide by remember { mutableStateOf(false) }
+
+    // 导入/导出 / 定位 状态
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    var highlightId by remember { mutableStateOf<String?>(null) }
+
+    // 导出：写入系统文件选择器
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val ok = runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use {
+                        it.write(ScheduleConfigManager.export(context).toByteArray())
+                    }
+                    true
+                }.getOrDefault(false)
+                Toast.makeText(context, if (ok) "定时任务配置已导出" else "导出失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    // 导入：读取系统文件选择器选中的 JSON
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val json = runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                }.getOrNull()
+                val result = if (json != null) ScheduleConfigManager.import(context, json)
+                else Result.failure(IllegalStateException("无法读取文件"))
+                result.onSuccess { msg ->
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }.onFailure { e ->
+                    Toast.makeText(context, "导入失败：${e.message}", Toast.LENGTH_LONG).show()
+                }
+                // 导入后刷新列表 + 重注册所有策略闹钟
+                strategies = repository.load()
+                ScheduleHelper.rescheduleStrategies(context, repository.load())
+            }
+        }
+    }
+
+    /** 定位到下次触发最近的策略（滚动 + 高亮） */
+    fun locateNextStrategy() {
+        val next = strategies
+            .filter { it.enabled }
+            .mapNotNull { s -> ScheduleHelper.computeNextTriggerMs(s, 0L)?.let { s to it } }
+            .minByOrNull { it.second }
+        val targetId = next?.first?.id
+        val idx = strategies.indexOfFirst { it.id == targetId }
+        if (idx >= 0) {
+            scope.launch {
+                listState.animateScrollToItem(idx)
+                highlightId = targetId
+                delay(2000)
+                highlightId = null
+            }
+        } else {
+            Toast.makeText(context, "没有即将触发的定时任务", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     fun refresh() {
         strategies = repository.load()
     }
 
-    // ---- 首次操作引导（聚光灯，全局渲染避免底栏遮挡/偏移）喵 ----
+    // ---- 首次操作引导（聚光灯，全局渲染避免底栏遮挡/偏移） ----
     val guideTargets = guideController.targets
     val guideSteps = remember {
         listOf(
@@ -123,11 +198,52 @@ fun ScheduleListView(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { onEditStrategy(null) },
-                modifier = Modifier.then(rememberGuideTarget("fab", guideTargets))
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(end = 16.dp, bottom = 16.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "新建策略")
+                // 导入定时任务配置（与新建同色系，统一小圆钮风格）
+                FloatingActionButton(
+                    onClick = { importLauncher.launch(arrayOf("application/json")) },
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Icon(Icons.Filled.FileUpload, contentDescription = "导入配置", modifier = Modifier.size(20.dp))
+                }
+                // 导出定时任务配置
+                FloatingActionButton(
+                    onClick = {
+                        exportLauncher.launch("maa_schedule_${System.currentTimeMillis()}.json")
+                    },
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Icon(Icons.Filled.FileDownload, contentDescription = "导出配置", modifier = Modifier.size(20.dp))
+                }
+                // 定位下次触发的任务
+                FloatingActionButton(
+                    onClick = { locateNextStrategy() },
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Icon(Icons.Filled.MyLocation, contentDescription = "定位任务", modifier = Modifier.size(20.dp))
+                }
+                // 新建定时任务（主操作，默认 FAB 尺寸，与其余按钮同色系）
+                FloatingActionButton(
+                    onClick = { onEditStrategy(null) },
+                    modifier = Modifier.then(rememberGuideTarget("fab", guideTargets)),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "新建策略")
+                }
             }
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -148,7 +264,7 @@ fun ScheduleListView(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "还没有定时策略喵～",
+                        "还没有定时策略",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -165,6 +281,7 @@ fun ScheduleListView(
                     .fillMaxSize()
                     .padding(padding)
                     .then(rememberGuideTarget("list", guideTargets)),
+                state = listState,
                 contentPadding = PaddingValues(horizontal = MaaDesignTokens.Spacing.listHorizontal, vertical = MaaDesignTokens.Spacing.sm),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -172,6 +289,7 @@ fun ScheduleListView(
                     StrategyCard(
                         strategy = strategy,
                         nextTrigger = ScheduleHelper.formatNextTriggerForDisplay(strategy),
+                        highlighted = strategy.id == highlightId,
                         onToggleEnabled = { enabled ->
                             repository.setEnabled(strategy.id, enabled)
                             if (enabled) {
@@ -230,13 +348,14 @@ fun ScheduleListView(
         }
     }
 
-    // 首次操作引导（聚光灯）已提升到 MainActivity 全局渲染，避免底栏遮挡与坐标偏移喵
+    // 首次操作引导（聚光灯）已提升到 MainActivity 全局渲染，避免底栏遮挡与坐标偏移
 }
 
 @Composable
 private fun StrategyCard(
     strategy: ScheduleStrategy,
     nextTrigger: String?,
+    highlighted: Boolean = false,
     onToggleEnabled: (Boolean) -> Unit,
     onClick: () -> Unit,
     onDelete: () -> Unit
@@ -245,7 +364,11 @@ private fun StrategyCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = if (highlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+            else MaterialTheme.colorScheme.surface
+        )
     ) {
         Row(
             modifier = Modifier.padding(16.dp),

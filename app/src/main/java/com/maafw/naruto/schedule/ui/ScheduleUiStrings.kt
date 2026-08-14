@@ -8,7 +8,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 定时任务 UI 文案喵～
+ * 定时任务 UI 文案
  *  ScheduleUiStrings.kt，字符串内联为中文（不依赖 i18n 资源）。
  */
 
@@ -48,7 +48,7 @@ fun scheduleExecutionResultLabel(result: ExecutionResult): String = when (result
 
 /** 策略摘要（ localizedScheduleStrategySummary） */
 fun localizedScheduleStrategySummary(strategy: ScheduleStrategy): String {
-    return when (strategy.scheduleType) {
+    val schedule = when (strategy.scheduleType) {
         ScheduleType.FIXED_TIME -> {
             val days = strategy.daysOfWeek.sorted()
                 .map { scheduleDaySummaryLabel(it) }
@@ -73,4 +73,11 @@ fun localizedScheduleStrategySummary(strategy: ScheduleStrategy): String {
             listOf(intervalText, startText).filter { it.isNotBlank() }.joinToString(" ")
         }
     }
+    // 唤醒方式标记：Root 唤醒优先显示，其次 Shizuku
+    val wakeMark = when {
+        strategy.rootWakeApp -> "· Root唤醒"
+        strategy.shizukuWakeApp -> "· Shizuku唤醒"
+        else -> ""
+    }
+    return listOf(schedule, wakeMark).filter { it.isNotBlank() }.joinToString(" ")
 }

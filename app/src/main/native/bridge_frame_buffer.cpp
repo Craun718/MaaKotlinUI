@@ -3,6 +3,7 @@
 #include <android/bitmap.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
@@ -19,6 +20,61 @@ static std::atomic<int> g_reader_counts[FRAME_BUFFER_COUNT] = {0, 0, 0};
 static std::atomic<FrameBuffer *> g_read_buffer{nullptr};
 static std::atomic<int64_t> g_frame_count{0};
 static std::atomic<bool> g_frame_buffers_initialized{false};
+
+// ==================== 帧率统计（debug：虚拟屏游戏真实帧率 + 脚本识别频率） ====================
+// 游戏 FPS：AImageReader 每收到一帧虚拟屏渲染帧（WriteHardwareBufferToFrame 成功）记录一次时间戳；
+// 脚本 FPS：MaaFramework 每次识别前截图（GetLockedPixels）记录一次时间戳——脚本卡住时识别停止，FPS 归零。
+// 注意：这些定义必须位于 WriteHardwareBufferToFrame / GetLockedPixels 之前（C++ 先声明后使用）。
+static constexpr int kFpsWindow = 64;
+static std::atomic<int64_t> g_game_fps_times[kFpsWindow];
+static std::atomic<int64_t> g_script_fps_times[kFpsWindow];
+static std::atomic<int> g_game_fps_count{0};
+static std::atomic<int> g_script_fps_count{0};
+
+static inline int64_t NowNs() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+static inline void PushTimestamp(std::atomic<int64_t> *times, std::atomic<int> *count, int64_t now) {
+    int idx = count->fetch_add(1, std::memory_order_relaxed) % kFpsWindow;
+    times[idx].store(now, std::memory_order_relaxed);
+}
+
+static double ComputeFps(std::atomic<int64_t> *times, int count) {
+    int n = count < kFpsWindow ? count : kFpsWindow;
+    if (n < 2) {
+        return 0.0;
+    }
+    int64_t minT = 0x7FFFFFFFFFFFFFFFLL;
+    int64_t maxT = 0;
+    for (int i = 0; i < kFpsWindow; ++i) {
+        int64_t t = times[i].load(std::memory_order_relaxed);
+        if (t == 0) {
+            continue;
+        }
+        if (t < minT) minT = t;
+        if (t > maxT) maxT = t;
+    }
+    if (maxT <= minT) {
+        return 0.0;
+    }
+    double dt = static_cast<double>(maxT - minT) / 1e9;
+    if (dt <= 0.0) {
+        return 0.0;
+    }
+    // 窗口内 n 个时间戳 → n-1 个间隔
+    double fps = static_cast<double>(n - 1) / dt;
+    return fps > 0.0 ? fps : 0.0;
+}
+
+double GetGameFps() {
+    return ComputeFps(g_game_fps_times, g_game_fps_count.load(std::memory_order_relaxed));
+}
+
+double GetScriptFps() {
+    return ComputeFps(g_script_fps_times, g_script_fps_count.load(std::memory_order_relaxed));
+}
 
 static void ProcessFrameDataV2(
         const uint8_t *__restrict src,
@@ -262,6 +318,8 @@ bool WriteHardwareBufferToFrame(AHardwareBuffer *buffer) {
 
     target->frame_count = g_frame_count.fetch_add(1, std::memory_order_acq_rel) + 1;
     CommitWriteBuffer(target);
+    // 游戏 FPS：虚拟屏渲染帧成功写入即记录一次
+    PushTimestamp(g_game_fps_times, &g_game_fps_count, NowNs());
     return true;
 }
 
@@ -270,6 +328,8 @@ int64_t GetFrameCount() {
 }
 
 BRIDGE_API FrameInfo GetLockedPixels() {
+    // 脚本 FPS：MaaFramework 每次识别截图都会调用（脚本卡住则停止调用，FPS 归零）
+    PushTimestamp(g_script_fps_times, &g_script_fps_count, NowNs());
     FrameInfo result = {0};
     const FrameBuffer *frame = LockCurrentFrame();
     if (!frame) {

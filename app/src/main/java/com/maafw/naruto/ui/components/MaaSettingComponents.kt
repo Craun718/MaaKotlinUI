@@ -25,11 +25,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -37,7 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.maafw.naruto.ui.theme.MaaDesignTokens
 
 /**
- * 设置组件库喵～
+ * 设置组件库
  *  presentation/components 系列（SettingRow/SectionHeader/CollapsibleSection/SettingsGroupCard/ListItemDivider）。
  */
 
@@ -131,19 +132,27 @@ fun CollapsibleSection(
     title: String,
     modifier: Modifier = Modifier,
     sectionKey: String = title,
-    initiallyExpanded: Boolean = true,
+    initiallyExpanded: Boolean = false,  // 默认收起（减少每次进入的视觉噪音）
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    var expanded by rememberSaveable(sectionKey) { mutableStateOf(initiallyExpanded) }
+    val context = LocalContext.current
+    // 展开状态持久化（App 重启也记住，不再每次重置为全展开）
+    var expanded by remember {
+        mutableStateOf(com.maafw.naruto.data.settings.MaaFwSettingsStore.getBoolean("section_$sectionKey", initiallyExpanded))
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(
-                    role = Role.Button,
-                    onClickLabel = if (expanded) "收起" else "展开",
-                ) { expanded = !expanded }
+        role = Role.Button,
+        onClickLabel = if (expanded) "收起" else "展开",
+    ) {
+        expanded = !expanded
+        // 持久化展开状态（App 重启也记住）
+        com.maafw.naruto.data.settings.MaaFwSettingsStore.put(context, "section_$sectionKey", expanded)
+    }
                 .padding(vertical = MaaDesignTokens.Spacing.sm),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,

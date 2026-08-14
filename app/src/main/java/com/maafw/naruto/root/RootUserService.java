@@ -13,7 +13,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 /**
- * Root 进程内创建应用服务实例（ RootUserService.java）喵。
+ * Root 进程内创建应用服务实例（ RootUserService.java）。
  */
 public final class RootUserService {
 

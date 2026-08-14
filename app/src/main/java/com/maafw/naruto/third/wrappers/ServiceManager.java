@@ -4,13 +4,13 @@ import android.annotation.SuppressLint;
 import android.os.IBinder;
 import android.os.IInterface;
 
-import com.maafw.naruto.third.FakeContext;
+import com.maafw.naruto.third.ShellContext;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
 /**
- * 系统服务包装喵，用于在 shell 进程获取 DisplayManager / WindowManager 等隐藏服务。
+ * 系统服务包装，用于在 shell 进程获取 DisplayManager / WindowManager 等隐藏服务。
  */
 @SuppressLint("PrivateApi,DiscouragedPrivateApi")
 public final class ServiceManager {
@@ -30,6 +30,7 @@ public final class ServiceManager {
     private static WindowManager windowManager;
     private static InputManager inputManager;
     private static ActivityManager activityManager;
+    private static PowerManager powerManager;
 
     public static InputManager getInputManager() {
         if (inputManager == null) {
@@ -44,6 +45,25 @@ public final class ServiceManager {
         } catch (Exception e) {
             throw new AssertionError(e);
         }
+    }
+
+    /** 按服务名 + AIDL 类名获取 IInterface（如 "power" + "android.os.IPowerManager"） */
+    public static IInterface getService(String name, String className) {
+        try {
+            IBinder binder = (IBinder) GET_SERVICE_METHOD.invoke(null, name);
+            Class<?> stubClass = Class.forName(className + "$Stub");
+            Method asInterface = stubClass.getDeclaredMethod("asInterface", IBinder.class);
+            return (IInterface) asInterface.invoke(null, binder);
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    public static PowerManager getPowerManager() {
+        if (powerManager == null) {
+            powerManager = PowerManager.create();
+        }
+        return powerManager;
     }
 
     public static DisplayManager getDisplayManager() {

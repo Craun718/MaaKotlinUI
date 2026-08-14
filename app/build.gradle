@@ -1,17 +1,22 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
-
 android {
     compileSdkVersion 34
     buildToolsVersion "34.0.4"
     namespace "com.maafw.naruto"
 
+    // 排除误打包的资源备份目录（避免 APK 体积翻倍）
+    androidResources {
+        ignoreAssetsPattern "!resource_bak"
+    }
+
+
     defaultConfig {
         applicationId "com.maafw.naruto"
         minSdkVersion 24
         targetSdkVersion 33
-        versionCode 1
-        versionName "1.0"
+        versionCode 65
+        versionName "1.1"
     }
 
     buildFeatures {
@@ -77,6 +82,6 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    // JNA：调用 MaaFramework C API 喵
+    implementation 'org.burnoutcrew.composereorderable:reorderable:0.9.6'
     implementation 'net.java.dev.jna:jna:5.14.0@aar'
 }

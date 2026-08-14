@@ -4,7 +4,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
 /**
- * Shell 命令执行工具喵。
+ * Shell 命令执行工具。
  */
 public final class Command {
 

@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * 底部按钮喵～
+ * 底部按钮
  *  BottomButtons.kt，左侧为停止/隐藏，右侧为开始。
  */
 @Composable

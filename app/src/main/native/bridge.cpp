@@ -53,6 +53,18 @@ static jlong nativeGetFrameCount(JNIEnv *env, jclass clazz) {
     return static_cast<jlong>(GetFrameCount());
 }
 
+static jdouble nativeGetFps(JNIEnv *env, jclass clazz) {
+    (void) env;
+    (void) clazz;
+    return static_cast<jdouble>(GetGameFps());
+}
+
+static jdouble nativeGetScriptFps(JNIEnv *env, jclass clazz) {
+    (void) env;
+    (void) clazz;
+    return static_cast<jdouble>(GetScriptFps());
+}
+
 static JNINativeMethod gMethods[] = {
         {"ping",                  "()Ljava/lang/String;",        reinterpret_cast<void *>(ping)},
         {"setupNativeCapturer",   "(II)Landroid/view/Surface;",  reinterpret_cast<void *>(nativeSetupNativeCapturer)},
@@ -60,6 +72,8 @@ static JNINativeMethod gMethods[] = {
         {"setPreviewSurface",     "(Ljava/lang/Object;)V",       reinterpret_cast<void *>(nativeSetPreviewSurface)},
         {"getFrameBufferBitmap",  "()Landroid/graphics/Bitmap;", reinterpret_cast<void *>(nativeGetFrameBufferBitmap)},
         {"getFrameCount",         "()J",                         reinterpret_cast<void *>(nativeGetFrameCount)},
+        {"getFps",                "()D",                         reinterpret_cast<void *>(nativeGetFps)},
+        {"getScriptFps",          "()D",                         reinterpret_cast<void *>(nativeGetScriptFps)},
         {"setResUid",             "(III)I",                      reinterpret_cast<void *>(nativeSetResUid)},
 };
 

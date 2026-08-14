@@ -6,7 +6,7 @@ import com.sun.jna.Pointer
 import java.io.File
 
 /**
- * MaaFramework 原生引擎包装喵～
+ * MaaFramework 原生引擎包装
  * 用 JNA 调用 libMaaFramework.so，驱动 MaaAndroidNativeController + bridge.so
  */
 class MaaFrameworkEngine(context: Context) {
@@ -14,20 +14,85 @@ class MaaFrameworkEngine(context: Context) {
     companion object {
         private const val TAG = "MaaFrameworkEngine"
         private const val STATUS_SUCCEEDED = 3000
+        /** O-2：控制器连接超时（同步 MaaControllerWait 可能永久挂起 -> 引擎卡死，必须限时） */
+        private const val CONTROLLER_CONNECT_TIMEOUT_MS = 15_000L
     }
 
     private val lib = MaaFrameworkLib.INSTANCE
-    private val appContext = context.applicationContext
+    // UserService context.applicationContext 可能为 null（Shizuku shell 进程），兜底用原 context
+    private val appContext = context.applicationContext ?: context
 
     private var resource: Pointer? = null
     private var controller: Pointer? = null
     private var tasker: Pointer? = null
     private var currentTaskId: Long = -1
 
+    /** resource 句柄（Agent 绑定用） */
+    val resourceHandle: Pointer? get() = resource
+    /** 上次任务结束状态（3000=成功；非 3000 时下次任务前需重建引擎，保证稳定性） */
+    private var lastTaskStatus: Int = STATUS_SUCCEEDED
+
     val version: String get() = lib.MaaVersion() ?: "unknown"
 
+    /** 任务是否可安全复用（上次任务正常结束 -> 跳过资源/模型重载） */
+    fun needRebuild(): Boolean = lastTaskStatus != STATUS_SUCCEEDED
+
+    /** tasker 是否已存在（引擎复用时跳过重建，避免旧 tasker 泄漏且与 controller 竞争） */
+    fun hasTasker(): Boolean = tasker != null && Pointer.nativeValue(tasker) != 0L
+
+    /** 记录任务结束状态（供复用判定） */
+    fun markTaskStatus(status: Int) {
+        lastTaskStatus = status
+    }
+
+    /** 清空识别缓存（任务间复用 tasker 时调用，避免旧识别结果影响下次任务） */
+    fun clearCache() {
+        val t = tasker ?: return
+        runCatching { lib.MaaTaskerClearCache(t) }
+    }
+
     /**
-     * 初始化 MaaFramework 全局选项喵
+     * 强制控制器重连（复用引擎时调用，毫秒级）。
+     * 重置 controller 内部截屏状态，确保新任务每一轮识别拿到的都是最新帧，
+     * 杜绝任何潜在旧帧/旧截屏缓存导致的识别滞后。
+     */
+    fun reConnectController(): Boolean {
+        val c = controller ?: return false
+        return runCatching {
+            val connId = lib.MaaControllerPostConnection(c)
+            val status = waitController(c, connId)
+            Log.i(TAG, "控制器重连 status=$status（3000=成功）")
+            status == STATUS_SUCCEEDED
+        }.getOrDefault(false)
+    }
+
+    /**
+     * O-2：等待控制器连接结果，带超时（同步 MaaControllerWait 可能永久挂起 -> 引擎卡死）。
+     * 用独立线程 + Future.get(timeout)，超时返回 -1（失败），主流程继续，不会卡死引擎。
+     */
+    private fun waitController(ctrl: Pointer, connId: Long): Int {
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        return try {
+            val future = executor.submit(java.util.concurrent.Callable<Int> { lib.MaaControllerWait(ctrl, connId) })
+            future.get(CONTROLLER_CONNECT_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            Log.e(TAG, "控制器连接超时（${CONTROLLER_CONNECT_TIMEOUT_MS}ms），返回失败（避免引擎卡死）")
+            -1
+        } catch (e: Exception) {
+            Log.e(TAG, "控制器等待异常: ${e.message}")
+            -1
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    /** 当前控制器截图帧号（验证识别是否使用新帧） */
+    fun currentFrameCount(): Long {
+        return runCatching { com.maafw.naruto.bridge.BridgeNativeLib.getFrameCount() }.getOrDefault(-1L)
+    }
+
+    /**
+     * 初始化 MaaFramework 全局选项
      */
     fun init(logDir: File? = null) {
         // 日志目录
@@ -47,7 +112,7 @@ class MaaFrameworkEngine(context: Context) {
     }
 
     /**
-     * 加载资源喵
+     * 加载资源
      * @param resourceDir pipeline/image/template 根目录
      */
     fun loadResource(resourceDir: String): Boolean {
@@ -55,10 +120,10 @@ class MaaFrameworkEngine(context: Context) {
         resource = res
         var loaded = true
 
-        // 注册 custom actions（pipeline 里 action: "Custom" 的节点回调到 CustomActions 喵）
+        // 注册 custom actions（pipeline 里 action: "Custom" 的节点回调到 CustomActions ）
         CustomActions.register(res)
 
-        // 注册 custom recognitions（pipeline 里 recognition: "Custom" 的节点回调到 CustomRecognitions 喵）
+        // 注册 custom recognitions（pipeline 里 recognition: "Custom" 的节点回调到 CustomRecognitions ）
         // 决斗场连点器（IsCounterOverflow）等依赖它，缺失会导致任务链提前结束
         CustomRecognitions.register(res)
         CustomRecognitions.resetState()
@@ -77,7 +142,7 @@ class MaaFrameworkEngine(context: Context) {
         loaded = loaded && lib.MaaResourceLoaded(res).toBool()
         Log.i(TAG, "加载 pipeline：id=$id loaded=$loaded")
 
-        // 图片模板：MaaFramework 只在 PostBundle / PostImage 时才会注册 image/ 目录喵
+        // 图片模板：MaaFramework 只在 PostBundle / PostImage 时才会注册 image/ 目录
         val imageDir = File(resourceDir, "image")
         if (imageDir.exists()) {
             Log.i(TAG, "加载图片模板：path=${imageDir.absolutePath} 子目录=${imageDir.listFiles()?.size ?: 0}")
@@ -89,7 +154,7 @@ class MaaFrameworkEngine(context: Context) {
             Log.w(TAG, "图片目录不存在：${imageDir.absolutePath}")
         }
 
-        // OCR 模型：只在 PostBundle / PostOcrModel 时才会扫描 model/ocr 目录喵
+        // OCR 模型：只在 PostBundle / PostOcrModel 时才会扫描 model/ocr 目录
         val ocrDir = File(resourceDir, "model/ocr")
         if (ocrDir.exists()) {
             Log.i(TAG, "加载 OCR 模型：path=${ocrDir.absolutePath} 文件数=${ocrDir.listFiles()?.size ?: 0}")
@@ -106,9 +171,9 @@ class MaaFrameworkEngine(context: Context) {
     }
 
     /**
-     * 创建 AndroidNative 控制器喵
+     * 创建 AndroidNative 控制器
      */
-    fun createController(libraryPath: String, width: Int, height: Int, displayId: Int = 0): Boolean {
+    fun createController(libraryPath: String, width: Int, height: Int, displayId: Int = 0, forceStop: Boolean = false): Boolean {
         val config = """
             {
                 "library_path": "$libraryPath",
@@ -117,35 +182,38 @@ class MaaFrameworkEngine(context: Context) {
                     "height": $height
                 },
                 "display_id": $displayId,
-                "force_stop": false
+                "force_stop": $forceStop
             }
         """.trimIndent()
         val ctrl = lib.MaaAndroidNativeControllerCreate(config)
         controller = ctrl
         Log.i(TAG, "创建控制器：config=$config, handle=$ctrl")
         if (ctrl == null || Pointer.nativeValue(ctrl) == 0L) {
-            Log.e(TAG, "控制器创建失败喵（返回空句柄）")
+            Log.e(TAG, "控制器创建失败（返回空句柄）")
             return false
         }
         val connId = lib.MaaControllerPostConnection(ctrl)
-        val status = lib.MaaControllerWait(ctrl, connId)
+        val status = waitController(ctrl, connId)
         Log.i(TAG, "控制器连接 status=$status（3000=成功，其余失败）")
         if (status != STATUS_SUCCEEDED) {
-            Log.e(TAG, "控制器连接失败 status=$status，请确认 Shizuku/Root 权限与 libbridge.so 可用喵")
+            Log.e(TAG, "控制器连接失败 status=$status，请确认 Shizuku/Root 权限与 libbridge.so 可用")
         }
         return status == STATUS_SUCCEEDED
     }
 
     /**
-     * 绑定并初始化 Tasker 喵
+     * 绑定并初始化 Tasker 
      */
     fun createTasker(): Boolean {
         val t = lib.MaaTaskerCreate()
         tasker = t
+        // 新 tasker 就绪：清掉旧 tasker 上注册的 sink 引用（引擎复用后每次任务会重建 tasker，
+        // 不清会导致 registeredSinks 无限增长——内存泄漏）
+        registeredSinks.clear()
         val res = resource
         val ctrl = controller
         if (res == null || ctrl == null) {
-            Log.e(TAG, "Tasker 创建失败：resource 或 controller 为空喵")
+            Log.e(TAG, "Tasker 创建失败：resource 或 controller 为空")
             return false
         }
         val bindRes = lib.MaaTaskerBindResource(t, res).toBool()
@@ -156,19 +224,30 @@ class MaaFrameworkEngine(context: Context) {
     }
 
     /**
-     * 注册任务事件回调喵（事件驱动，参考 MAA-Meow 的事件流设计，无需轮询）。
+     * 注册任务事件回调（基于事件回调，无需轮询）。
      * 回调收到 Tasker.Task.Starting / Succeeded / Failed 等事件。
      */
     fun addSink(sink: MaaEventCallback) {
-        registeredSinks.add(sink) // 强引用防止 JNA 回调被 GC 喵
+        registeredSinks.add(sink) // 强引用防止 JNA 回调被 GC
         val t = tasker ?: return
         lib.MaaTaskerAddSink(t, sink, null)
+    }
+
+    /**
+     * 注册任务级上下文事件回调（Node.* 事件：Node.Action.Starting 等）。
+     * MaaTaskerAddSink 只收 Tasker 层事件（Tasker.Task.*），
+     * Node.* 事件需要 MaaTaskerAddContextSink（见 MaaMsg.h）。
+     */
+    fun addContextSink(sink: MaaEventCallback) {
+        registeredSinks.add(sink) // 强引用防止 JNA 回调被 GC
+        val t = tasker ?: return
+        lib.MaaTaskerAddContextSink(t, sink, null)
     }
 
     private val registeredSinks = mutableListOf<MaaEventCallback>()
 
     /**
-     * 启动任务喵
+     * 启动任务
      */
     fun startTask(entry: String, pipelineOverride: String? = null): Boolean {
         if (entry.isBlank()) {
@@ -176,13 +255,13 @@ class MaaFrameworkEngine(context: Context) {
             return false
         }
         val t = tasker ?: run {
-            Log.e(TAG, "Tasker 未初始化喵")
+            Log.e(TAG, "Tasker 未初始化")
             return false
         }
         // MaaFramework 的 MaaTaskerPostTask：
         // - null char* 会在日志里 strlen(NULL) 崩溃（SIGSEGV）；
         // - 空串 "" 会 json::parse 失败返回无效 taskId；
-        // 所以无覆盖时传 "{}"（合法空 JSON 对象）最安全喵。
+        // 所以无覆盖时传 "{}"（合法空 JSON 对象）最安全。
         val override = pipelineOverride ?: "{}"
         currentTaskId = lib.MaaTaskerPostTask(t, entry, override)
         Log.i(TAG, "启动任务 entry=$entry, taskId=$currentTaskId")
@@ -190,18 +269,19 @@ class MaaFrameworkEngine(context: Context) {
     }
 
     /**
-     * 等待当前任务结束喵
+     * 等待当前任务结束
      */
     fun waitTask(): Int {
         val t = tasker ?: return -1
         if (currentTaskId == -1L) return -1
         val status = lib.MaaTaskerWait(t, currentTaskId)
+        lastTaskStatus = status
         Log.i(TAG, "任务结束 status=$status")
         return status
     }
 
     /**
-     * 停止任务喵
+     * 停止任务
      */
     fun stopTask(): Boolean {
         val t = tasker ?: return false
@@ -212,7 +292,7 @@ class MaaFrameworkEngine(context: Context) {
     }
 
     /**
-     * 销毁所有对象喵
+     * 销毁所有对象
      */
     fun destroy() {
         stopTask()

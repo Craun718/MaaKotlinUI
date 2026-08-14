@@ -1,7 +1,7 @@
 package com.maafw.naruto.data.schedule
 
 /**
- * 定时任务项喵～
+ * 定时任务项
  * @param id 唯一标识
  * @param taskEntry 任务入口名
  * @param taskName 任务显示名

@@ -2,14 +2,14 @@ package com.maafw.naruto.bridge
 
 import android.content.Context
 import android.os.SystemClock
-import com.maafw.naruto.remote.internal.ActivityUtils
+import com.maafw.naruto.remote.internal.MaaFwActivityHelper
 import com.maafw.naruto.shizuku.InputInjector
 import com.maafw.naruto.third.Ln
 
 /**
- * 原生桥的输入驱动回调类喵～
+ * 原生桥的输入驱动回调类
  * libbridge.so 在 JNI_OnLoad 里会反射调用这里的静态方法。
- * 运行环境是 Shizuku UserService 进程（shell UID），所以 am 命令和 InputManager 注入都有权限喵。
+ * 运行环境是 Shizuku UserService 进程（shell UID），所以 am 命令和 InputManager 注入都有权限。
  */
 object NativeBridge {
 
@@ -42,13 +42,13 @@ object NativeBridge {
     @JvmStatic
     fun startApp(packageName: String, displayId: Int, forceStop: Boolean): Boolean {
         return runCatching {
-            val launched = ActivityUtils.startApp(packageName, displayId, forceStop, true)
+            val launched = MaaFwActivityHelper.startApp(packageName, displayId, forceStop, true)
             if (!launched) {
                 Ln.e("NativeBridge.startApp: failed to start $packageName on display $displayId")
                 return@runCatching false
             }
             Ln.i("NativeBridge.startApp: started $packageName on display $displayId, ensuring it stays there")
-            ActivityUtils.ensureAppOnDisplay(packageName, displayId)
+            MaaFwActivityHelper.ensureAppOnDisplay(packageName, displayId)
             awaitFirstFrame()
             true
         }.getOrElse { false }
@@ -56,10 +56,10 @@ object NativeBridge {
 
     @JvmStatic
     private fun awaitFirstFrame(timeoutMs: Long = 5000L, pollMs: Long = 50L): Boolean {
-        val baseline = NativeBridgeLib.getFrameCount()
+        val baseline = BridgeNativeLib.getFrameCount()
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         while (SystemClock.uptimeMillis() < deadline) {
-            if (NativeBridgeLib.getFrameCount() > baseline) {
+            if (BridgeNativeLib.getFrameCount() > baseline) {
                 return true
             }
             SystemClock.sleep(pollMs)

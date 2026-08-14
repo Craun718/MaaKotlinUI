@@ -7,7 +7,7 @@ import android.view.Surface;
 
 import com.maafw.naruto.third.Command;
 import com.maafw.naruto.third.DisplayInfo;
-import com.maafw.naruto.third.FakeContext;
+import com.maafw.naruto.third.ShellContext;
 import com.maafw.naruto.third.Ln;
 import com.maafw.naruto.third.Size;
 
@@ -18,7 +18,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * DisplayManager 隐藏 API 包装喵。
+ * DisplayManager 隐藏 API 包装。
  */
 @SuppressLint("PrivateApi,DiscouragedPrivateApi")
 public final class DisplayManager {
@@ -52,7 +52,7 @@ public final class DisplayManager {
             Constructor<android.hardware.display.DisplayManager> ctor = android.hardware.display.DisplayManager.class.getDeclaredConstructor(
                     android.content.Context.class);
             ctor.setAccessible(true);
-            android.hardware.display.DisplayManager dm = ctor.newInstance(FakeContext.get());
+            android.hardware.display.DisplayManager dm = ctor.newInstance(ShellContext.get());
             return dm.createVirtualDisplay(name, width, height, dpi, surface, flags);
         } catch (java.lang.reflect.InvocationTargetException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;

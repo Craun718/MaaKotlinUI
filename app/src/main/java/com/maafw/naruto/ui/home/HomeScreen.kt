@@ -1,13 +1,21 @@
 package com.maafw.naruto.ui.home
 
+import android.content.Context
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,11 +29,12 @@ import com.maafw.naruto.maa.MaaFrameworkEngine
 import com.maafw.naruto.model.AssetLoader
 import com.maafw.naruto.shizuku.ShizukuManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
- * 主页喵～
- *  的状态看板：Shizuku、引擎运行状态、虚拟屏预览、当前任务喵。
+ * 主页
+ *  的状态看板：Shizuku、引擎运行状态、虚拟屏预览、当前任务。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,16 +42,36 @@ fun HomeScreen(
     running: Boolean,
     currentTask: String,
     remoteConnected: Boolean,
+    engineBinding: Boolean,
+    agentConnected: Boolean,
     displayId: Int,
     displayResolution: Pair<Int, Int>,
     runMode: String,
     onRequestShizuku: () -> Unit,
+    onOpenShizuku: () -> Unit,
+    onInstallShizuku: () -> Unit,
     onOpenScripts: () -> Unit,
+    onUpdateResource: () -> Unit,
+    onStartTask: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var shizukuReady by remember { mutableStateOf(ShizukuManager.isReady()) }
     var showPermissionDialog by remember { mutableStateOf(false) }
+    // Shizuku 已就绪时，状态卡只显示 2.5 秒后带动画消失（未就绪则常驻显示）
+    var shizukuCardVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(shizukuReady) {
+        if (shizukuReady) {
+            shizukuCardVisible = true
+            delay(2500)
+            shizukuCardVisible = false
+        } else {
+            shizukuCardVisible = true
+        }
+    }
+    // 使用帮助提示条：点 X 关闭后记住，下次进入不再显示；不点则每次进入都显示
+    val noticePrefs = remember { context.getSharedPreferences("home_notice", Context.MODE_PRIVATE) }
+    var noticeDismissed by remember { mutableStateOf(noticePrefs.getBoolean("notice_dismissed", false)) }
 
     Scaffold(
         topBar = {
@@ -62,8 +91,61 @@ fun HomeScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { ShizukuStatusCard(shizukuReady, onRequestShizuku) }
-            item { EngineStatusCard(running, currentTask, remoteConnected, displayId) }
+            // 使用帮助提示条（点 X 关闭后不再显示）
+            if (!noticeDismissed) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "快速使用说明",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "1. 安装 Shizuku 并授权（root 用户可用 Sui）\n" +
+                                        "2. 连接引擎后，到「脚本」页勾选任务\n" +
+                                        "3. 点击开始，可后台挂机（支持定时任务）\n" +
+                                        "遇到问题可在「设置-关于」查看交流方式，日志可在设置页导出",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(onClick = {
+                                noticeDismissed = true
+                                noticePrefs.edit().putBoolean("notice_dismissed", true).apply()
+                            }) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = "关闭提示",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                // Shizuku 已就绪时 2.5 秒后带动画消失；未就绪常驻显示
+                AnimatedVisibility(
+                    visible = if (shizukuReady) shizukuCardVisible else true,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    ShizukuStatusCard(shizukuReady, onRequestShizuku, onOpenShizuku, onInstallShizuku)
+                }
+            }
+            item { EngineStatusCard(running, currentTask, remoteConnected, agentConnected, displayId) }
             item {
                 val maaVersion by produceState(initialValue = "loading...") {
                     value = withContext(Dispatchers.IO) {
@@ -74,29 +156,40 @@ fun HomeScreen(
                     maaVersion = maaVersion,
                     resourceVersion = remember {
                         val iface = AssetLoader.loadInterface(context)
-                        "${iface?.name ?: "unknown"} v${iface?.interfaceVersion ?: 1}"
+                        "${iface?.name ?: "unknown"} v${iface?.interfaceVersion?.ifBlank { "1" } ?: "1"}"
                     },
                     ocrEngine = remember { detectOcrEngine(context) },
                     displayResolution = displayResolution,
-                    runMode = runMode
-                )
-            }
-            item {
-                QuickActionCard(
-                    onOpenScripts = onOpenScripts,
-                    onRefreshShizuku = {
-                        ShizukuManager.requestPermission(context) {
-                            shizukuReady = ShizukuManager.isReady()
-                        }
+                    runMode = runMode,
+                    // S-2：显示 Shizuku 实际运行模式（adb/shell 或 root），防模式错乱
+                    shizukuMode = remember {
+                        if (com.maafw.naruto.shizuku.ShizukuManager.isAvailable()) {
+                            if (com.maafw.naruto.shizuku.ShizukuManager.isRunningAsRoot()) "root 模式" else "adb/shell 模式"
+                        } else "未运行"
                     }
                 )
             }
+            item {
+            QuickActionCard(
+                onOpenScripts = onOpenScripts,
+                onRefreshShizuku = {
+                    ShizukuManager.requestPermission(context) {
+                        shizukuReady = ShizukuManager.isReady()
+                    }
+                },
+                onUpdateResource = onUpdateResource,
+                onStartTask = onStartTask,
+                remoteConnected = remoteConnected,
+                engineBinding = engineBinding,
+                running = running
+            )
+        }
             item {
                 PermissionCheckCard(onClick = { showPermissionDialog = true })
             }
             item {
                 Text(
-                    "小夜酱真是最棒的人工智能哇～喵～",
+                    "小夜酱真是最棒的人工智能哇～",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -110,7 +203,7 @@ fun HomeScreen(
     }
 }
 
-/** 权限检查弹窗喵：列出所有关键权限状态，点击对应项可跳转授权 */
+/** 权限检查弹窗：列出所有关键权限状态，点击对应项可跳转授权 */
 @Composable
 private fun PermissionCheckDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -181,6 +274,7 @@ private fun PermissionCheckDialog(onDismiss: () -> Unit) {
                 )
             }
             // 通知（Android 13+）
+            val activity = context as? com.maafw.naruto.MainActivity
             if (android.os.Build.VERSION.SDK_INT >= 33) {
                 val granted = context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
                         android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -190,10 +284,14 @@ private fun PermissionCheckDialog(onDismiss: () -> Unit) {
                         if (granted) "已授予" else "未授予",
                         granted,
                         action = {
-                            runCatching {
-                                val i = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                context.startActivity(i)
+                            if (granted) {
+                                runCatching {
+                                    val i = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                    context.startActivity(i)
+                                }
+                            } else {
+                                activity?.requestNotificationPermission()
                             }
                         }
                     )
@@ -280,7 +378,7 @@ private fun PermissionCheckDialog(onDismiss: () -> Unit) {
                             )
                             context.startActivity(intent)
                         }.onFailure {
-                            // 部分 ROM 不弹窗，fallback 到电池优化设置列表喵
+                            // 部分 ROM 不弹窗，fallback 到电池优化设置列表
                             runCatching {
                                 context.startActivity(
                                     android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
@@ -306,6 +404,20 @@ private fun PermissionCheckDialog(onDismiss: () -> Unit) {
             }
             // 开机自启
             add(PermItem("开机自启", "已声明", true))
+            // 无障碍防杀（非 root 保活核心：App 进程受系统保护）
+            val accOn = com.maafw.naruto.data.settings.SettingsRepository.isAccessibilityKeepAliveEnabled(context)
+            add(
+                PermItem(
+                    "无障碍防杀（后台保活）",
+                    if (accOn) "已启用" else "建议开启",
+                    accOn,
+                    action = {
+                        runCatching {
+                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        }
+                    }
+                )
+            )
         }
     }
 
@@ -355,7 +467,7 @@ private fun PermissionCheckDialog(onDismiss: () -> Unit) {
     )
 }
 
-/** 权限检查入口卡片喵 */
+/** 权限检查入口卡片 */
 @Composable
 private fun PermissionCheckCard(onClick: () -> Unit) {
     Card(
@@ -400,49 +512,77 @@ private fun PermissionCheckCard(onClick: () -> Unit) {
 }
 
 @Composable
-private fun ShizukuStatusCard(
-    ready: Boolean,
-    onRequest: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (ready)
-                MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.errorContainer
-        )
+    private fun ShizukuStatusCard(
+        ready: Boolean,
+        onRequest: () -> Unit,
+        onOpenShizuku: () -> Unit = {},
+        onInstallShizuku: () -> Unit = {}
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = if (ready) Icons.Default.PlayArrow else Icons.Default.Stop,
-                    contentDescription = null,
-                    tint = if (ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (ready) "Shizuku 已就绪" else "Shizuku 未就绪",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = if (ready)
-                    "已获得系统权限，可以创建虚拟屏幕和注入输入事件喵"
-                else "请先在 Shizuku 管理器中授权本应用喵",
-                style = MaterialTheme.typography.bodyMedium
+        // U-5：分级状态（未安装 / 未运行 / 未授权 / 就绪），未就绪时给出对应引导动作
+        val installed = com.maafw.naruto.shizuku.ShizukuManager.isAppInstalled()
+        val available = com.maafw.naruto.shizuku.ShizukuManager.isAvailable()
+        val granted = com.maafw.naruto.shizuku.ShizukuManager.isReady()
+        val isReady = ready || granted
+        val title = when {
+            isReady -> "Shizuku 已就绪"
+            !installed -> "Shizuku 未安装"
+            !available -> "Shizuku 未运行"
+            else -> "Shizuku 未授权"
+        }
+        val desc = when {
+            isReady -> "已获得系统权限，可以创建虚拟屏幕和注入输入事件"
+            !installed -> "需要安装 Shizuku；Magisk root 用户可改用 Sui 模块（免装 App）"
+            !available -> "请在 Shizuku 管理器中启动服务，或打开 Shizuku App"
+            else -> "请先在 Shizuku 管理器中授权本应用"
+        }
+        val btnText = when {
+            !installed -> "安装 Shizuku"
+            !available -> "打开 Shizuku"
+            else -> "检查 / 请求授权"
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isReady)
+                    MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.errorContainer
             )
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(onClick = onRequest) {
-                Text("检查 / 请求 Shizuku")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (isReady) Icons.Default.PlayArrow else Icons.Default.Stop,
+                        contentDescription = null,
+                        tint = if (isReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = desc,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(onClick = {
+                    when {
+                        !installed -> onInstallShizuku()
+                        !available -> onOpenShizuku()
+                        else -> onRequest()
+                    }
+                }) {
+                    Text(btnText)
+                }
             }
         }
     }
-}
 
 @Composable
-private fun EngineStatusCard(running: Boolean, currentTask: String, remoteConnected: Boolean, displayId: Int) {
+private fun EngineStatusCard(running: Boolean, currentTask: String, remoteConnected: Boolean, agentConnected: Boolean, displayId: Int) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -460,7 +600,7 @@ private fun EngineStatusCard(running: Boolean, currentTask: String, remoteConnec
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = if (currentTask.isNotBlank()) "当前任务：$currentTask" else "当前没有运行任务喵",
+                text = if (currentTask.isNotBlank()) "当前任务：$currentTask" else "当前没有运行任务",
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(modifier = Modifier.height(4.dp))
@@ -468,6 +608,19 @@ private fun EngineStatusCard(running: Boolean, currentTask: String, remoteConnec
                 label = "远端引擎",
                 value = if (remoteConnected) "已连接" else "未连接",
                 valueColor = if (remoteConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+            )
+            InfoRow(
+                label = "Agent 服务",
+                value = when {
+                    agentConnected -> "已连接（独立进程）"
+                    running -> "连接中…"
+                    else -> "未启动"
+                },
+                valueColor = when {
+                    agentConnected -> MaterialTheme.colorScheme.primary
+                    running -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
             )
             InfoRow(
                 label = "虚拟屏 ID",
@@ -478,13 +631,14 @@ private fun EngineStatusCard(running: Boolean, currentTask: String, remoteConnec
 }
 
 @Composable
-private fun InfoStatusCard(
-    maaVersion: String,
-    resourceVersion: String,
-    ocrEngine: String,
-    displayResolution: Pair<Int, Int>,
-    runMode: String
-) {
+    private fun InfoStatusCard(
+        maaVersion: String,
+        resourceVersion: String,
+        ocrEngine: String,
+        displayResolution: Pair<Int, Int>,
+        runMode: String,
+        shizukuMode: String
+    ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -498,14 +652,16 @@ private fun InfoStatusCard(
             InfoRow(label = "识图引擎", value = ocrEngine)
             InfoRow(label = "虚拟屏分辨率", value = "${displayResolution.first}x${displayResolution.second}")
             InfoRow(label = "运行模式", value = if (runMode == com.maafw.naruto.data.settings.SettingsRepository.RUN_MODE_ROOT) "Root" else "Shizuku")
+            InfoRow(label = "Shizuku 模式", value = shizukuMode)
             InfoRow(label = "渲染控制器", value = "AndroidNativeController")
+            InfoRow(label = "设备", value = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
             InfoRow(label = "安卓版本", value = "${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
             InfoRow(label = "应用版本", value = com.maafw.naruto.BuildConfig.VERSION_NAME)
         }
     }
 }
 
-/** 检测内置 OCR 引擎（从 assets model/ocr 目录判断）喵 */
+/** 检测内置 OCR 引擎（从 assets model/ocr 目录判断） */
 private fun detectOcrEngine(context: android.content.Context): String {
     return runCatching {
         val files = context.assets.list("resource/base/model/ocr") ?: emptyArray()
@@ -547,7 +703,12 @@ private fun InfoRow(
 @Composable
 private fun QuickActionCard(
     onOpenScripts: () -> Unit,
-    onRefreshShizuku: () -> Unit
+    onRefreshShizuku: () -> Unit,
+    onUpdateResource: () -> Unit,
+    onStartTask: () -> Unit,
+    remoteConnected: Boolean,
+    engineBinding: Boolean,
+    running: Boolean
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -570,6 +731,34 @@ private fun QuickActionCard(
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("选择脚本")
+                }
+                OutlinedButton(
+                    onClick = onStartTask,
+                    enabled = remoteConnected && !running,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        when {
+                            remoteConnected -> "开始任务"
+                            engineBinding -> "引擎连接中…"
+                            else -> "引擎未连接"
+                        }
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onUpdateResource,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("更新资源")
                 }
                 OutlinedButton(
                     onClick = onRefreshShizuku,

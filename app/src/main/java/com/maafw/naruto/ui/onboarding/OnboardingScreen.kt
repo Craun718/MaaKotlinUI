@@ -7,12 +7,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -21,12 +23,15 @@ import androidx.compose.ui.unit.dp
 import com.maafw.naruto.ui.theme.MaaDesignTokens
 
 /**
- * 首次启动引导页喵～
- * 3 步：欢迎 / 权限 / 使用说明。完成后由调用方写入"已引导"标记。
+ * 首次启动引导页
+ * 3 步：欢迎 / 权限（可实际申请）/ 使用说明。完成后由调用方写入"已引导"标记。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OnboardingScreen(onFinish: () -> Unit) {
+fun OnboardingScreen(
+    onFinish: () -> Unit,
+    onRequestPermissions: () -> Unit = {},
+) {
     var step by remember { mutableStateOf(0) }
 
     Surface(
@@ -60,7 +65,10 @@ fun OnboardingScreen(onFinish: () -> Unit) {
 
             when (step) {
                 0 -> StepWelcome()
-                1 -> StepPermission(onRequestShizuku = { /* 由用户后续在主页授权 */ })
+                1 -> StepPermission(
+                    onRequestShizuku = { /* 由用户后续在主页授权 */ },
+                    onRequestAll = onRequestPermissions,
+                )
                 2 -> StepUsage()
             }
 
@@ -113,14 +121,33 @@ private fun StepWelcome() {
 }
 
 @Composable
-private fun StepPermission(onRequestShizuku: () -> Unit) {
+private fun StepPermission(onRequestShizuku: () -> Unit, onRequestAll: () -> Unit) {
+    val context = LocalContext.current
     Column {
         Text(
             "权限说明",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "建议先点击下方「一键申请」，逐项授予必要权限，保证定时任务与后台运行可靠。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = onRequestAll,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp),
+            shape = RoundedCornerShape(MaaDesignTokens.CornerRadius.button)
+        ) {
+            Icon(Icons.Filled.Check, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("一键申请必要权限")
+        }
+        Spacer(Modifier.height(12.dp))
         PermissionItem(
             icon = Icons.Filled.PlayArrow,
             title = "Shizuku 授权（必需）",
@@ -136,9 +163,32 @@ private fun StepPermission(onRequestShizuku: () -> Unit) {
             title = "电池优化 / 自启动",
             desc = "建议允许忽略电池优化、开启自启动，保证定时任务后台可靠执行。"
         )
-        Spacer(Modifier.height(16.dp))
+        PermissionItem(
+            icon = Icons.Filled.Lock,
+            title = "无障碍防杀（推荐）",
+            desc = if (android.provider.Settings.Secure.getString(
+                    context.contentResolver,
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                )?.contains("com.maafw.naruto/.service.KeepAliveAccessibilityService") == true
+            ) "已启用：后台挂机时 App 进程受系统保护，引擎任务更稳定。"
+            else "后台挂机防杀关键：点击前往无障碍设置开启（不读取屏幕内容，仅防杀）。"
+        )
+        Spacer(Modifier.height(4.dp))
+        TextButton(
+            onClick = {
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("去开启无障碍防杀")
+        }
+        Spacer(Modifier.height(12.dp))
         Text(
-            "授权入口：主页「检查 / 请求 Shizuku」按钮；设置页可随时调整。",
+            "授权后仍可随时在设置页调整；Shizuku 需在主页「检查 / 请求 Shizuku」完成。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
