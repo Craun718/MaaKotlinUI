@@ -18,10 +18,18 @@ LOCAL_LDFLAGS := -Wl,--gc-sections
 LOCAL_LDLIBS := -llog -landroid -ljnigraphics -lmediandk -lEGL -lGLESv2
 include $(BUILD_SHARED_LIBRARY)
 
+# ⚠ launcher 必须用 BUILD_EXECUTABLE（可执行程序），不能用 BUILD_SHARED_LIBRARY！
+# 原因：launcher 由 App 通过 `su -c liblauncher.so ...` 作为独立程序直接执行，
+#      必须生成带 PT_INTERP 的 PIE 可执行文件。若用 BUILD_SHARED_LIBRARY 编译会得到
+#      无 INTERP 的纯共享库，直接运行会 SIGSEGV（段错误），导致 Root 引擎永远启动不起来
+#      （见 maa_logs 中"获取 Root 引擎 binder 超时"）。
+# 构建后产物在 obj/local/arm64-v8a/launcher，需改名 liblauncher.so 放入 jniLibs/arm64-v8a/。
 include $(CLEAR_VARS)
 LOCAL_MODULE := launcher
 LOCAL_SRC_FILES := launcher.c
 LOCAL_CFLAGS := -O2 -ffunction-sections -fdata-sections
 LOCAL_LDFLAGS := -Wl,--gc-sections
 LOCAL_LDLIBS := -llog
-include $(BUILD_SHARED_LIBRARY)
+# -fPIE + -pie 确保生成 PIE 可执行文件（Android 强制要求）
+LOCAL_CFLAGS += -fPIE
+include $(BUILD_EXECUTABLE)
