@@ -36,7 +36,7 @@ TITLE_TAG_RE = re.compile(r"<title>Release\s+([^<\s]+)", re.IGNORECASE)
 ASSET_KEYWORD = "MAA-android-aarch64"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CACHE_DIR = PROJECT_ROOT / ".maaframework-cache"
+CACHE_DIR = PROJECT_ROOT / "cache"
 JNI_DIR = PROJECT_ROOT / "app" / "src" / "main" / "jniLibs" / "arm64-v8a"
 INCLUDE_DIR = PROJECT_ROOT / "app" / "src" / "main" / "cpp" / "include"
 VERSION_FILE = PROJECT_ROOT / ".maaframework-version"
@@ -281,7 +281,11 @@ def main():
             download_file(asset["browser_download_url"], zip_path)
     else:
         print("[SKIP] 跳过下载，使用缓存")
-        zips = list(CACHE_DIR.glob("*.zip"))
+        zips = [
+            path
+            for path in CACHE_DIR.glob("*.zip")
+            if ASSET_KEYWORD.lower() in path.name.lower()
+        ]
         if args.tag:
             zips = [path for path in zips if path.name.endswith(f"-{args.tag}.zip")]
         if not zips:
