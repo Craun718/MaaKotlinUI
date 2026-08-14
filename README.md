@@ -85,7 +85,7 @@
 | 引擎 | MaaFramework（`libMaaFramework.so`）+ libbridge.so |
 | 原生调用 | JNA `5.14.0` |
 | 权限通道 | rikka.shizuku `13.1.5`、rikka.sui、Root（app_process） |
-| 构建 | Android Gradle Plugin `8.1.4`、Kotlin `1.8.22` |
+| 构建 | Android Gradle Plugin `7.2.2`、Kotlin `1.8.22` |
 | 其它 | Gson、kotlinx-coroutines、RecyclerView、Material Components |
 
 ---
@@ -121,10 +121,9 @@
 │       │   └── third/                  # 系统服务反射包装（hidden API 兼容）
 ├── scripts/
 │   ├── setup_maaframework.py           # 下载/部署 MaaFramework 预编译库
+│   ├── update_narutomobile_assets.py   # 构建前同步业务资源到 Android assets
 │   └── convert_multiswipe.py           # 多指滑动转换工具（开发辅助）
-├── ai开发任务进度文档/                  # 架构拆解与开发进度系列文档
 ├── 编译说明.md                       # 编译指南
-├── 编译说明给ai阅读.md                # 面向开发者的编译指南
 └── 性能优化方案.md / 滑动卡死问题修复报告.md  # 开发辅助文档
 ```
 
@@ -146,10 +145,21 @@ App 需要的权限见 `app/src/main/AndroidManifest.xml`，主要包括：通�
 
 ## 编译构建
 
+构建 APK 前，先同步 NarutoMobile 业务资源：
+
+```bash
+python scripts/update_narutomobile_assets.py
+```
+
+该脚本会下载最新稳定版业务资源，将 `interface.json` 和 `resource/` 写入
+`app/src/main/assets/`，并默认完成 Android 所需的 MultiSwipe 转换。资源随后会随 APK
+一起打包；App 不提供安装后导入业务资源包的功能。指定版本、本地压缩包等用法见
+[`编译说明.md`](编译说明.md)。
+
 ### 方式一：PC / 终端（推荐）
 
 ```bash
-# 1. 环境要求：JDK 17+（兼容 JDK 21）、Android SDK（build-tools 34.0.4）
+# 1. 环境要求：JDK 17+（兼容 JDK 21）、Android SDK（build-tools 34.0.0）
 export ANDROID_HOME=/path/to/android-sdk
 
 # 2. 编译 debug APK
@@ -163,7 +173,7 @@ export ANDROID_HOME=/path/to/android-sdk
 
 ```bash
 ./gradlew :app:assembleDebug \
-  -Pandroid.aapt2FromMavenOverride=$ANDROID_HOME/build-tools/34.0.4/aapt2
+  -Pandroid.aapt2FromMavenOverride=$ANDROID_HOME/build-tools/34.0.0/aapt2
 ```
 
 ### 方式二：AndroidIDE（设备上编译）
@@ -171,10 +181,10 @@ export ANDROID_HOME=/path/to/android-sdk
 ```bash
 export ANDROID_HOME=/root/android-sdk
 bash gradlew :app:assembleDebug --no-daemon \
-  -Pandroid.aapt2FromMavenOverride=/root/android-sdk/build-tools/34.0.4/aapt2
+  -Pandroid.aapt2FromMavenOverride=/root/android-sdk/build-tools/34.0.0/aapt2
 ```
 
-更详细的构建步骤、常见报错与备用方案（ZeroTermux proot）见 [`编译说明.md`](编译说明.md) 和 [`编译说明给ai阅读.md`](编译说明给ai阅读.md)。
+更详细的构建步骤、常见报错与备用方案（ZeroTermux proot）见 [`编译说明.md`](编译说明.md)。
 
 ### 部署 MaaFramework 预编译库
 
@@ -202,10 +212,10 @@ python scripts/setup_maaframework.py --tag v5.12.3   # 指定版本
    - 电池优化白名单（后台保活需要）
    - 悬浮窗权限（可选）
    - Shizuku 授权（或启用 Root 模式）
-4. 导入业务资源包（`interface.json` + `resource/`）后，在「脚本」页勾选要执行的任务并点击「启动任务」。
+4. 在「脚本」页勾选要执行的任务并点击「启动任务」。业务资源已在构建 APK 前写入 `app/src/main/assets/` 并随 APK 打包，无需在安装后导入。
 5. 可在「设置」页配置定时任务、第三方推送、引擎复用、Root 守护进程等。
 
-> 资源首次启动时会由 `AssetResourceDeployer` 部署到 App 私有目录。修改 `assets/resource` 后需提升 `versionCode` 强制重新部署。
+> 资源首次启动时会由 `AssetResourceDeployer` 部署到 App 私有目录。后续会通过相对路径和文件大小对比自动发现大多数 `assets/resource` 变化；发布包含资源更新的版本时仍建议提升 `versionCode`，以确保同大小的内容变化也会触发重新部署。
 
 ---
 
@@ -215,7 +225,7 @@ python scripts/setup_maaframework.py --tag v5.12.3   # 指定版本
 
 | # | 红线 | 原因 |
 | --- | --- | --- |
-| 1 | **不要重编译 libbridge.so** | 必须使用原版（md5 `6807aea6`，82KB），ndk-build 重编译产物会导致滑动 / 多点注入异常卡死 |
+| 1 | **不要把历史 `libbridge.so`、`liblauncher.so` 手动放进 `jniLibs`** | 标准 Gradle 构建会通过 CMake 从当前 native 源码生成 |
 | 2 | **不要注册 `MaaTaskerAddContextSink`（focus 监听）** | 节点事件回调会导致引擎随机崩溃 / 卡死 |
 | 3 | **不要用 MaaFramework Swipe 多途径点**（`end` 数组 + `duration` 数组） | 引擎卡死，已改为 `NonlinearSwipe` 引擎层直接注入 |
 | 4 | **不要在 CustomRecognition 里嵌套 OCR** | 死锁 |
@@ -240,10 +250,7 @@ python scripts/setup_maaframework.py --tag v5.12.3   # 指定版本
 
 | 文档 | 内容 |
 | --- | --- |
-| [`ai开发任务进度文档/00-项目概览与架构.md`](ai开发任务进度文档/00-项目概览与架构.md) | 整体架构与设计哲学 |
-| [`ai开发任务进度文档/01-…`](ai开发任务进度文档/) | Shizuku/Root 双通道、远程引擎、虚拟屏、守护自愈、日志体系等系列文档 |
 | [`编译说明.md`](编译说明.md) | 设备端（AndroidIDE）编译步骤 |
-| [`编译说明给ai阅读.md`](编译说明给ai阅读.md) | 面向开发者的编译与红线说明 |
 | [`性能优化方案.md`](性能优化方案.md) | 已实施 / 待实施性能优化 |
 | [`滑动卡死问题修复报告.md`](滑动卡死问题修复报告.md) | 滑动卡死根因与规避清单 |
 | [`修复multiswipe分析报告解决方案.md`](修复multiswipe分析报告解决方案.md) | 多指滑动不适配分析与方案 |
