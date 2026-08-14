@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 android {
     compileSdkVersion 34
-    buildToolsVersion "34.0.4"
+    buildToolsVersion "34.0.0"
     namespace "com.maafw.naruto"
 
     // 排除误打包的资源备份目录（避免 APK 体积翻倍）
