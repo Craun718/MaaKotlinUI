@@ -973,7 +973,9 @@ private fun extractFocusFromLine(line: String): String? {
         } else {
             registerReceiver(logReceiver, filter)
         }
-        if (Shizuku.pingBinder()) bindRemoteEngine()
+        // 修复：无条件触发引擎绑定（bind() 内部已按 Root/Shizuku 模式分流，且 Connecting/Connected 幂等）。
+        // 原 `if (Shizuku.pingBinder())` 在 Root 模式 / Shizuku 未运行时永不触发 → 打开 App 即"引擎未连接"且无新引擎日志
+        bindRemoteEngine()
     }
 
     override fun onPause() {

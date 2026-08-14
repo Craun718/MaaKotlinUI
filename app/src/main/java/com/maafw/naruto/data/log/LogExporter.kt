@@ -32,19 +32,47 @@ object LogExporter {
     }
 
     /** 删除所有引擎日志文件（含备份）+ 导出目录日志（MaaFw日志），供「清空日志」使用 */
-fun clearLogFiles(context: Context) {
-    val dirs = mutableListOf<File>()
-    context.getExternalFilesDir(null)?.let { dirs += File(it, LOG_SUB_DIR) }
-    dirs += File("/data/local/tmp", "maa_logs_${context.packageName}")
-    // 导出目录（/storage/emulated/0/MaaFw日志）：agent_/custom_/logcat_/app_/maafw_ 等全部清理
-    val exportDir = File(android.os.Environment.getExternalStorageDirectory(), EXPORT_DIR_NAME)
-    if (exportDir.exists()) dirs += exportDir
-    for (dir in dirs) {
-        runCatching {
-            dir.listFiles()?.filter { it.isFile && (it.name.startsWith("maafw") || it.name.endsWith(".log")) }?.forEach { it.delete() }
+    fun clearLogFiles(context: Context) {
+        // 清理范围必须覆盖 ZIP 导出会打包的所有来源，否则旧日志会被再次导出：
+        //  1) ext/maa_logs/          → engine/ + session/（maafw.log、session_*、custom_kt、agent、bak）
+        //  2) ext/debug/             → app/（service_bind_debug、crash、app_runtime、conn_env、conn_debug）+ logcat/
+        //  3) /data/local/tmp/maa_logs_<pkg>/ → root/maafw.log（Root 引擎会话日志）
+        //  4) /data/local/tmp/maafw_root_engine.log → root/root_launch_debug.log（Root launcher stderr）
+        //  5) ext/engine_config.json  → config/engine_config.json
+        //  6) 导出目录 /storage/emulated/0/MaaFw日志（maafw_/app_/logcat_/custom_/agent_ 等）
+        val ext = context.getExternalFilesDir(null)
+        val dirs = mutableListOf<File>()
+        ext?.let { dirs += File(it, LOG_SUB_DIR) }
+        ext?.let { dirs += File(it, "debug") }
+        dirs += File("/data/local/tmp", "maa_logs_${context.packageName}")
+        dirs += File("/data/local/tmp/maafw_root_engine.log")
+        val exportDir = File(android.os.Environment.getExternalStorageDirectory(), EXPORT_DIR_NAME)
+        if (exportDir.exists()) dirs += exportDir
+        for (dir in dirs) {
+            runCatching {
+                if (dir.isFile) {
+                    dir.delete()
+                } else if (dir.isDirectory) {
+                    // debug/ 与导出目录整体清空（含子目录 logcat/）；maa_logs 目录只删 .log/.txt（保留目录结构）
+                    val isDebug = dir.name == "debug"
+                    dir.listFiles()?.forEach { f ->
+                        if (f.isDirectory) {
+                            if (isDebug) {
+                                f.deleteRecursively()
+                            }
+                        } else {
+                            if (isDebug || f.name.endsWith(".log") || f.name.endsWith(".txt")) {
+                                f.delete()
+                            }
+                        }
+                    }
+                }
+                Unit // if-else if 作为语句而非表达式（避免 Kotlin 要求最终 else）
+            }
         }
+        // engine_config.json（单文件）
+        runCatching { ext?.let { File(it, "engine_config.json") }?.delete() }
     }
-}
 
     /**
      * 引擎会话滚动：每次引擎进程启动时调用，把上次的 maafw.log 滚动为备份（最多 3 个），
@@ -234,6 +262,14 @@ fun clearLogFiles(context: Context) {
                 // 1) app/：App 侧诊断（排除 logcat 子目录，单独分类）
                 File(ext, "debug").listFiles()?.filter { it.isFile }?.forEach { f ->
                     zipEntry(zos, "app/${f.name}", f)
+                }
+                // 1b) P-conn：动态生成连接环境快照（无论引擎是否连接，导出时总是最新）
+                //     含 Shizuku/Root 状态、引擎进程、日志痕迹 → 定位"引擎未连接"的核心证据
+                runCatching {
+                    val connEnv = ConnectionDiagnostics.snapshotText(context)
+                    zos.putNextEntry(java.util.zip.ZipEntry("app/conn_env.txt"))
+                    zos.write(connEnv.toByteArray())
+                    zos.closeEntry()
                 }
                 // 2) engine/：引擎会话日志 + 启动 trace
                 File(ext, "maa_logs").listFiles()

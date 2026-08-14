@@ -106,6 +106,9 @@ object RootRemoteServiceConnector {
             append(" --uid=").append(uid)
             append(" --debug-name=").append(processName)
             append(" --log-file=").append(logFile)
+            // 关键：保持 root 身份运行（uid=0），否则引擎以 shell(2000) 运行无法 addService 到
+            // ServiceManager，binder 回传失败 → App 拿不到引擎 binder（超时）。
+            append(" --keep-root")
             append("' &")
         }
         Log.i(TAG, "启动 root 引擎进程(liblauncher): $cmd")
