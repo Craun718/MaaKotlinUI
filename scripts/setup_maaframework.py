@@ -9,7 +9,7 @@ MaaFramework Android 预编译库下载与部署脚本喵～
     python scripts/setup_maaframework.py --skip-download     # 仅从缓存部署
 
 它会从 MaaFramework GitHub Release 下载 MAA-android-aarch64.zip，
-把 lib*.so 解压到 app/src/main/jniLibs/arm64-v8a/，
+把 bin/*.so（兼容旧版 lib/*.so）解压到 app/src/main/jniLibs/arm64-v8a/，
 把 include/ 解压到 app/src/main/cpp/include/ 供 JNI/JNA 绑定使用喵。
 """
 
@@ -175,14 +175,26 @@ def clean_deploy_dirs():
     INCLUDE_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def is_shared_library_member(member: str) -> bool:
+    """识别 Release 中的直属预编译库。
+
+    当前版本使用 bin/*.so，旧版可能使用 lib/*.so。只接受目录直属
+    文件，避免把 bin/plugins/*.so 等非运行时库误打包进 APK。
+    """
+    parts = Path(member).parts
+    return (
+        len(parts) >= 2
+        and parts[-2] in {"bin", "lib"}
+        and parts[-1].endswith(".so")
+    )
+
+
 def extract_and_deploy(zip_path: Path, version: str):
     print(f"  [EXTRACT] {zip_path.name}")
     with zipfile.ZipFile(zip_path, "r") as zf:
         members = zf.namelist()
 
-        so_members = [
-            m for m in members if "lib" in Path(m).parts and m.endswith(".so")
-        ]
+        so_members = [m for m in members if is_shared_library_member(m)]
         include_members = [
             m
             for m in members
@@ -190,7 +202,8 @@ def extract_and_deploy(zip_path: Path, version: str):
         ]
         if not so_members or not include_members:
             print(
-                "[ERROR] 压缩包中缺少 lib/*.so 或 include/*，未修改现有部署。",
+                "[ERROR] 压缩包中缺少 bin/*.so（或 lib/*.so）或 include/*，"
+                "未修改现有部署。",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -211,8 +224,8 @@ def extract_and_deploy(zip_path: Path, version: str):
                 continue
             parts = Path(member).parts
 
-            # lib/*.so -> jniLibs
-            if "lib" in parts and member.endswith(".so"):
+            # bin/*.so（兼容旧版 lib/*.so）-> jniLibs
+            if is_shared_library_member(member):
                 name = Path(member).name
                 dest = JNI_DIR / name
                 with zf.open(member) as src:
