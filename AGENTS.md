@@ -31,6 +31,11 @@ python scripts/setup_maaframework.py --tag v5.12.3
 python scripts/update_narutomobile_assets.py
 ```
 
+## GitHub 仓库信息查询
+
+- 需要查看 GitHub 仓库情况（如 release、action、commit、issue）时，优先使用 `gh` CLI（如 `gh release list`、`gh run list`、`gh issue list`、`gh api` 等），避免直接抓取网页。
+- 若本机未安装 `gh`，先询问用户是否要安装，取得同意后再安装使用。
+
 ## 版本号约定
 
 应用版本定义在 `app/build.gradle` 的 `android.defaultConfig` 中：
