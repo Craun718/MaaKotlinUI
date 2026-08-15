@@ -3,6 +3,7 @@ apply plugin: 'kotlin-android'
 android {
     compileSdkVersion 34
     buildToolsVersion "34.0.0"
+    ndkVersion "25.2.9519653"
     namespace "com.maafw.naruto"
 
     // 排除误打包的资源备份目录（避免 APK 体积翻倍）
@@ -24,6 +25,7 @@ android {
 
         externalNativeBuild {
             cmake {
+                arguments '-DANDROID_PLATFORM=android-26'
                 targets 'bridge', 'launcher'
             }
         }
@@ -47,6 +49,7 @@ android {
     externalNativeBuild {
         cmake {
             path file('src/main/native/CMakeLists.txt')
+            version "3.22.1"
         }
     }
 
